@@ -1,0 +1,117 @@
+.container {
+    margin: 80px 0;
+    min-height: calc(100vh - 160px);
+    box-sizing: border-box;
+    padding: 0 50px 50px;
+    /* border: 1px solid black; */
+}
+
+.container * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+.title {
+    text-align: center;
+    font-size: 4rem;
+}
+
+.option-wrap {
+  padding: 0;
+  margin-top: 80px;
+  overflow: hidden;
+  box-sizing: border-box;
+  height: 20vw;
+  position: relative;
+}
+
+.option-wrap section {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    display: flex;
+    transition: transform 0.75s ease-in-out;
+    
+    /* border: 1px solid white; */
+}
+
+.opt {
+    cursor: pointer;
+    background: black;
+    transition: background-color 0.2s ease-out;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.opt:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.start-opt, .web-opt, .room-opt {
+    width: 50%;
+}
+
+.start-opt img {
+    width: 10vw;
+    filter: invert(1);
+    overflow: clip;
+}
+
+.start-opt p {
+    font-size: 2.8vw;
+    font-weight: 500;
+    margin-top: 2vw;
+}
+
+.difficulty-opt {
+    width: calc(100% / 3);
+}
+
+.difficulty-opt h2, 
+.web-opt h2,
+.room-opt h2 {
+    font-size: 3vw;
+}
+
+.difficulty-opt p,
+.web-opt p,
+.room-opt p  {
+    margin-top: 1vw;
+    font-size: 1.5vw;
+}
+
+.reset-btn {
+    margin-top: 10px;
+    background: #304FFE;
+    color: white;
+    width: 9vw;
+    height: 6vw;
+    font-size: 1.6vw;
+    border: none;
+    cursor: pointer;
+    transition: opacity 1s ease-in-out;
+}
+
+.reset-btn:hover {
+    background-color: black;
+}
+
+section.hide-up {
+    transform: translateY(-100%);
+    pointer-events: none;
+}
+
+section.hide-down {
+    transform: translateY(100%);
+    pointer-events: none;
+}
+
+.reset-btn.hide {
+    opacity: 0;
+    pointer-events: none;
+}
+
+
