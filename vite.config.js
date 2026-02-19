@@ -17,4 +17,5 @@ export default defineConfig({
       '@': path.resolve(fileURLToPath(import.meta.url), '../src'),
     },
   },
+  base: 'ultimate-tic-tac-toe'
 })
