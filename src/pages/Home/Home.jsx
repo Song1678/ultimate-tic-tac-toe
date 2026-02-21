@@ -65,15 +65,21 @@ function OptionView() {
                     </div>
                 </section>
                 <section className={diffiSecClassName}>
-                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}>
+                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}
+                        onClick={() => navigate("/ai-game?difficulty=easy")}
+                    >
                         <h2>简单</h2>
                         <p>AI随机落子</p>
                     </div>
-                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}>
+                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}
+                        onClick={() => navigate("/ai-game?difficulty=medium")}
+                    >
                         <h2>中等</h2>
                         <p>AI避免愚蠢落子</p>
                     </div>
-                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}>
+                    <div className={`${styles['opt']} ${styles['difficulty-opt']}`}
+                        onClick={() => navigate("/ai-game?difficulty=hard")}
+                    >
                         <h2>困难</h2>
                         <p>AI选择较佳落子</p>
                     </div>

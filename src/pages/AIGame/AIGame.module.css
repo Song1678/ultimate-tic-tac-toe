@@ -1,0 +1,235 @@
+.container {
+    margin: 80px 0;
+    min-height: calc(100vh - 160px);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.container * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+.title {
+    font-size: 3.2rem;
+    text-align: center;
+    margin-bottom: 0.8em;
+}
+
+.cell {
+    box-sizing: content-box;
+    width: 7vmin;
+    height: 7vmin;
+    border: 2px solid white;
+    border-top: none;
+    border-left: none;
+    cursor: pointer;
+}
+
+.cell:last-child {
+    border-right: none;
+}
+
+.sub-board>div:last-child>.cell {
+    border-bottom: none;
+}
+
+.cell:hover {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.piece {
+    width: 100%;
+    height: 100%;
+    transform-origin: left center;
+    transform: rotateY(-90deg) translateX(-100%);
+    transition: transform 0.5s ease-out;
+    overflow: hidden;
+}
+
+.piece::after {
+    content: '';
+    display: block;
+    width: 100%;
+    height: 100%;
+    line-height: 7vmin;
+    font-size: 5vmin;
+    text-align: center;
+    color: white;
+    transform-origin: right center;
+    transform: rotateY(-145deg) translateX(100%) scale(3);
+    transition: transform 0.5s ease-out;
+}
+
+.x-cell>.piece {
+    background-color: #c0392b;
+    transform: rotateY(0) translateX(0);
+}
+
+.o-cell>.piece {
+    background-color: #16a085;
+    transform: rotateY(0) translateX(0);
+}
+
+.x-cell>.piece::after {
+    transform: rotateY(0) scale(1);
+    content: 'X';
+}
+
+.o-cell>.piece::after {
+    transform: rotateY(0) scale(1);
+    content: 'O';
+}
+
+.sub-board>div,
+.board>div {
+    display: flex;
+}
+
+.sub-board {
+    padding: 12px;
+    background-color: black;
+    border: 8px solid aqua;
+    border-top: none;
+    border-left: none;
+    position: relative;
+    transition: background-color 0.1s ease-in-out;
+}
+
+.sub-board:last-child {
+    border-right: none;
+}
+
+.board>div:last-child>.sub-board {
+    border-bottom: none;
+}
+
+.sub-board:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.board-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 100px;
+    font-weight: 500;
+    transform-origin: left center;
+    transform: rotateY(-90deg);
+    transition: transform 1s ease-out 0.5s
+}
+
+.x-board,
+.o-board,
+.t-board {
+    pointer-events: none;
+}
+
+.x-board>.board-label {
+    transform: rotateY(0);
+    background-color: rgb(183, 21, 64);
+}
+
+.x-board>.board-label::after {
+    content: 'X';
+}
+
+.o-board>.board-label {
+    transform: rotateY(0);
+    background-color: rgb(7, 153, 146);
+}
+
+.o-board>.board-label::after {
+    content: 'O';
+}
+
+.t-board>.board-label {
+    transform: rotateY(0);
+    background-color: rgb(243, 156, 18);
+}
+
+.t-board>.board-label::after {
+    content: 'T';
+}
+
+.no-play {
+    pointer-events: none;
+}
+
+.sub-board.target {
+    background-color: #8e44ad;
+}
+
+.sub-board.target:hover {
+    background-color: rgba(142, 68, 173, 0.7);
+}
+
+.info-box {
+    width: 280px;
+    vertical-align: top;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.info-box>h2 {
+    font-size: 2.4rem;
+    margin-bottom: 10px;
+}
+
+.reset-btn {
+    margin-top: 10px;
+    background: #304FFE;
+    color: white;
+    width: 60px;
+    height: 40px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.5s ease;
+}
+
+.reset-btn:hover {
+    background-color: black;
+}
+
+.back-btn {
+    margin-top: 60px;
+    background: #304FFE;
+    color: white;
+    width: 80px;
+    height: 60px;
+    font-size: 14px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.5s ease;
+}
+
+.back-btn:hover {
+    background-color: black;
+}
+
+.game-wrap {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+
+@media (max-aspect-ratio: 12 / 9) {
+    .game-wrap {
+        flex-direction: column-reverse;
+        align-items: center;
+    }
+    .container {
+        padding: 0;
+    }
+}

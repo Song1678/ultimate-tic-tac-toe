@@ -1,14 +1,15 @@
-import styles from './Game.module.css'
-import { useReducer } from 'react'
+import styles from './AIGame.module.css'
+import { useReducer, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom';
 
 export default function Game() {
     const [state, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
-        nextPiece: 'X'
+        nextPiece: 'X',
+        isAIThinking: false
     });
-    const { board, targetIndex, nextPiece } = state;
+    const { board, targetIndex, nextPiece, isAIThinking } = state;
     const subWinners = Array.from({ length: 9 }, (_, i) => calculateWinner(board[i]));
     const winner = calculateWinner(subWinners);
     const navigate = useNavigate();
@@ -28,6 +29,23 @@ export default function Game() {
         });
     }
 
+    useEffect(() => {
+        if (nextPiece === 'X' || winner !== null) return;
+
+        dispatch({ type: 'SET_AI_THINKING', payload: true });
+        const aiTimer = setTimeout(() => {
+            const aiMove = calculateAIMove(board, targetIndex);
+            dispatch({
+                type: 'PLAY',
+                payload: { i: aiMove.i, j: aiMove.j }
+            });
+            dispatch({ type: 'SET_AI_THINKING', payload: false });
+        }, 1200)
+
+        return () => clearTimeout(aiTimer);
+
+    }, [nextPiece])
+
     return (
         <div className={styles.container}>
             <h1 className={styles.title}>终极井字棋</h1>
@@ -37,13 +55,15 @@ export default function Game() {
                     targetIndex={targetIndex}
                     onPlay={handlePlay}
                     subWinners={subWinners}
-                    canPlay={winner === null}
+                    isGameOVer={winner !== null}
+                    isAIThinking={isAIThinking}
                 />
                 <InfoBox
                     winner={winner}
                     nextPiece={nextPiece}
                     targetIndex={targetIndex}
                     reset={reset}
+                    isAIThinking={isAIThinking}
                 />
             </div>
             <button className={styles['back-btn']} onClick={() => navigate('/')}>返回</button>
@@ -51,7 +71,7 @@ export default function Game() {
     );
 }
 
-function Board({ board, targetIndex, onPlay, subWinners, canPlay }) {
+function Board({ board, targetIndex, onPlay, subWinners, isGameOVer, isAIThinking }) {
     return (
         <div className={styles['board']}>
             {Array.from({ length: 3 }).map((_, row) => (
@@ -63,8 +83,8 @@ function Board({ board, targetIndex, onPlay, subWinners, canPlay }) {
                                 key={index}
                                 subBoard={board[index]}
                                 onPlay={onPlay(index)}
-                                isTarget={canPlay && index === targetIndex}
-                                isActive={canPlay && (targetIndex === -1 || index === targetIndex)}
+                                isTarget={!isGameOVer && index === targetIndex}
+                                isActive={!isGameOVer && !isAIThinking && (targetIndex === -1 || index === targetIndex)}
                                 winner={subWinners[index]}
                             />
                         );
@@ -125,7 +145,7 @@ function Cell({ mark, onCellClick }) {
     )
 }
 
-function InfoBox({ winner, nextPiece, targetIndex, reset }) {
+function InfoBox({ winner, nextPiece, targetIndex, reset, isAIThinking }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
 
@@ -139,7 +159,9 @@ function InfoBox({ winner, nextPiece, targetIndex, reset }) {
         <> {currentPieceElement} <span>方落子</span> </>
     );
 
-    const hintText = targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子";
+    const hintText = isAIThinking ? 
+        "AI正在思考...." : 
+        (targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子");
 
     return (
         <aside className={styles['info-box']}>
@@ -188,12 +210,44 @@ function gameReducer(state, action) {
         }
         case 'RESET': {
             return {
+                ...state,
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
-                nextPiece: 'X'
+                nextPiece: 'X',
+                isAIThinking: false
+            }
+        }
+        case 'SET_AI_THINKING': {
+            return {
+                ...state,
+                isAIThinking: action.payload
             }
         }
         default:
             return state;
     }
+}
+
+function calculateAIMove(board, targetIndex) {
+    let i, j;
+    let availableSubBoardIndex = [];
+    let availableCellIndex = [];
+    if (targetIndex === -1) {
+        availableSubBoardIndex = board
+            .map((subBoard, index) => ({ subBoard, index }))
+            .filter(({ subBoard }) => calculateWinner(subBoard) === null)
+            .map(({ index }) => index);
+        i = availableSubBoardIndex[Math.floor(Math.random() * availableSubBoardIndex.length)];
+    } else {
+        i = targetIndex;
+    }
+
+    const targetSubBoard = board[i];
+    availableCellIndex = targetSubBoard
+        .map((cell, index) => ({ cell, index }))
+        .filter(({ cell }) => cell === null)
+        .map(({ index }) => index);
+    j = availableCellIndex[Math.floor(Math.random() * availableCellIndex.length)];
+
+    return { i, j };
 }
