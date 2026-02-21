@@ -1,6 +1,8 @@
 import styles from './AIGame.module.css'
 import { useReducer, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { checkResult } from '@/utils/boardHelper.js';
+import calculateAIMove from '@/utils/aiMove.js'
 
 export default function Game() {
     const [state, dispatch] = useReducer(gameReducer, {
@@ -10,9 +12,17 @@ export default function Game() {
         isAIThinking: false
     });
     const { board, targetIndex, nextPiece, isAIThinking } = state;
-    const subWinners = Array.from({ length: 9 }, (_, i) => calculateWinner(board[i]));
-    const winner = calculateWinner(subWinners);
+    const subResults = Array.from({ length: 9 }, (_, i) => checkResult(board[i]));
+    const result = checkResult(subResults);
     const navigate = useNavigate();
+    const [searchParams, _] = useSearchParams();
+    const difficulty = searchParams.get('difficulty') || 'easy';
+    const aiDelayTimeConfig = {
+        'easy': 1000,
+        'medium': 0,
+        'hard': 0
+    }
+    const aiDelayTime = aiDelayTimeConfig[difficulty] || aiDelayTimeConfig['easy'];
 
     function handlePlay(i) {
         return function (j) {
@@ -30,17 +40,18 @@ export default function Game() {
     }
 
     useEffect(() => {
-        if (nextPiece === 'X' || winner !== null) return;
+        if (nextPiece === 'X' || result !== null) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
         const aiTimer = setTimeout(() => {
-            const aiMove = calculateAIMove(board, targetIndex);
+            const aiMove = calculateAIMove(board, targetIndex, difficulty);
+            console.log("aiMove", aiMove);
             dispatch({
                 type: 'PLAY',
                 payload: { i: aiMove.i, j: aiMove.j }
             });
             dispatch({ type: 'SET_AI_THINKING', payload: false });
-        }, 1200)
+        }, aiDelayTime)
 
         return () => clearTimeout(aiTimer);
 
@@ -54,12 +65,12 @@ export default function Game() {
                     board={board}
                     targetIndex={targetIndex}
                     onPlay={handlePlay}
-                    subWinners={subWinners}
-                    isGameOVer={winner !== null}
+                    subResults={subResults}
+                    isGameOVer={result !== null}
                     isAIThinking={isAIThinking}
                 />
                 <InfoBox
-                    winner={winner}
+                    result={result}
                     nextPiece={nextPiece}
                     targetIndex={targetIndex}
                     reset={reset}
@@ -71,7 +82,7 @@ export default function Game() {
     );
 }
 
-function Board({ board, targetIndex, onPlay, subWinners, isGameOVer, isAIThinking }) {
+function Board({ board, targetIndex, onPlay, subResults, isGameOVer, isAIThinking }) {
     return (
         <div className={styles['board']}>
             {Array.from({ length: 3 }).map((_, row) => (
@@ -85,7 +96,7 @@ function Board({ board, targetIndex, onPlay, subWinners, isGameOVer, isAIThinkin
                                 onPlay={onPlay(index)}
                                 isTarget={!isGameOVer && index === targetIndex}
                                 isActive={!isGameOVer && !isAIThinking && (targetIndex === -1 || index === targetIndex)}
-                                winner={subWinners[index]}
+                                result={subResults[index]}
                             />
                         );
                     })}
@@ -95,11 +106,11 @@ function Board({ board, targetIndex, onPlay, subWinners, isGameOVer, isAIThinkin
     );
 }
 
-function SubBoard({ subBoard, onPlay, isTarget, isActive, winner }) {
+function SubBoard({ subBoard, onPlay, isTarget, isActive, result }) {
     let subBoardClassName = styles['sub-board'];
-    if (winner === 'X') subBoardClassName += ` ${styles['x-board']}`;
-    if (winner === 'O') subBoardClassName += ` ${styles['o-board']}`;
-    if (winner === 'T') subBoardClassName += ` ${styles['t-board']}`;
+    if (result === 'X') subBoardClassName += ` ${styles['x-board']}`;
+    if (result === 'O') subBoardClassName += ` ${styles['o-board']}`;
+    if (result === 'T') subBoardClassName += ` ${styles['t-board']}`;
     if (!isActive) subBoardClassName += ` ${styles['no-play']}`;
     if (isTarget) subBoardClassName += ` ${styles['target']}`;
 
@@ -145,51 +156,31 @@ function Cell({ mark, onCellClick }) {
     )
 }
 
-function InfoBox({ winner, nextPiece, targetIndex, reset, isAIThinking }) {
+function InfoBox({ result, nextPiece, targetIndex, reset, isAIThinking }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
 
-    const currentPieceElement = winner ?
-        (winner === 'X' ? XElement : OElement) :
+    const currentPieceElement = result ?
+        (result === 'X' ? XElement : OElement) :
         (nextPiece === 'X' ? XElement : OElement);
 
-    const titleContent = winner ? (
-        <> {currentPieceElement} <span>方获胜</span> </>
+    const titleContent = result ? (
+        result === 'T' ? (<span>平局!</span>) : (<> {currentPieceElement} <span>方获胜!</span> </>)
     ) : (
         <> {currentPieceElement} <span>方落子</span> </>
     );
 
-    const hintText = isAIThinking ? 
-        "AI正在思考...." : 
+    const hintText = isAIThinking ?
+        "AI正在思考...." :
         (targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子");
 
     return (
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
-            {!winner && <p>{hintText}</p>}
-            {winner && <button className={styles['reset-btn']} onClick={() => reset()}>重置</button>}
+            {!result && <p>{hintText}</p>}
+            {result && <button className={styles['reset-btn']} onClick={() => reset()}>重置</button>}
         </aside>
     );
-}
-
-function calculateWinner(board) {
-    const lines = [
-        [0, 1, 2],
-        [3, 4, 5],
-        [6, 7, 8],
-        [0, 3, 6],
-        [1, 4, 7],
-        [2, 5, 8],
-        [0, 4, 8],
-        [2, 4, 6]
-    ];
-    for (const [a, b, c] of lines) {
-        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-            return board[a];
-        }
-    }
-    if (!board.includes(null)) return 'T'
-    return null;
 }
 
 function gameReducer(state, action) {
@@ -199,7 +190,7 @@ function gameReducer(state, action) {
             const newBoard = [...state.board];
             newBoard[i] = [...state.board[i]];
             newBoard[i][j] = state.nextPiece;
-            const newTargetIndex = calculateWinner(newBoard[j]) === null ? j : -1;
+            const newTargetIndex = checkResult(newBoard[j]) === null ? j : -1;
             const newNextPiece = state.nextPiece === 'X' ? 'O' : 'X';
             return {
                 ...state,
@@ -226,28 +217,4 @@ function gameReducer(state, action) {
         default:
             return state;
     }
-}
-
-function calculateAIMove(board, targetIndex) {
-    let i, j;
-    let availableSubBoardIndex = [];
-    let availableCellIndex = [];
-    if (targetIndex === -1) {
-        availableSubBoardIndex = board
-            .map((subBoard, index) => ({ subBoard, index }))
-            .filter(({ subBoard }) => calculateWinner(subBoard) === null)
-            .map(({ index }) => index);
-        i = availableSubBoardIndex[Math.floor(Math.random() * availableSubBoardIndex.length)];
-    } else {
-        i = targetIndex;
-    }
-
-    const targetSubBoard = board[i];
-    availableCellIndex = targetSubBoard
-        .map((cell, index) => ({ cell, index }))
-        .filter(({ cell }) => cell === null)
-        .map(({ index }) => index);
-    j = availableCellIndex[Math.floor(Math.random() * availableCellIndex.length)];
-
-    return { i, j };
 }
