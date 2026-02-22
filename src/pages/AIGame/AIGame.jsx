@@ -1,8 +1,8 @@
 import styles from './AIGame.module.css'
-import { useReducer, useEffect } from 'react'
+import { useReducer, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';
-import calculateAIMove from '@/utils/aiMove.js'
+import AIWorker from '@/utils/ai.worker.js?worker';
 
 export default function Game() {
     const [state, dispatch] = useReducer(gameReducer, {
@@ -23,6 +23,7 @@ export default function Game() {
         'hard': 0
     }
     const aiDelayTime = aiDelayTimeConfig[difficulty] || aiDelayTimeConfig['easy'];
+    const aiWorkerRef = useRef(null);
 
     function handlePlay(i) {
         return function (j) {
@@ -39,22 +40,36 @@ export default function Game() {
         });
     }
 
+    //初始化Worker（组件挂载时创建一次）
+    useEffect(() => {
+        aiWorkerRef.current = new AIWorker();
+        //监听Worker返回结果
+        aiWorkerRef.current.onmessage = (e) => {
+            const aiMove = e.data;
+            dispatch({ type: 'PLAY', payload: { i: aiMove.i, j: aiMove.j } });
+            dispatch({ type: 'SET_AI_THINKING', payload: false });
+        };
+
+        return () => {
+            if (aiWorkerRef.current) {
+                aiWorkerRef.current.terminate();
+                aiWorkerRef.current = null;
+            }
+        };
+    }, []);
+
     useEffect(() => {
         if (nextPiece === 'X' || result !== null) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
         const aiTimer = setTimeout(() => {
-            const aiMove = calculateAIMove(board, targetIndex, difficulty);
-            console.log("aiMove", aiMove);
-            dispatch({
-                type: 'PLAY',
-                payload: { i: aiMove.i, j: aiMove.j }
-            });
-            dispatch({ type: 'SET_AI_THINKING', payload: false });
+            //修复ai思考页面卡顿问题：扁平化数组，减少结构化克隆开销
+            const flatBoard = board.flat(); 
+            aiWorkerRef.current.postMessage({ flatBoard, targetIndex, difficulty });
         }, aiDelayTime)
 
         return () => clearTimeout(aiTimer);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nextPiece])
 
     return (

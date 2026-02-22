@@ -1,85 +1,54 @@
-import { checkResult, priorityOrder, isFull, isEmpty } from "./boardHelper.js";
+import { checkResult, findWinningMove } from "./boardHelper.js";
 
 export default function calculateMediumAIMove(board, targetIndex) {
     let i, j;
-    let availableSubBoardIndex = [];
+    //选择在哪个小棋盘下
     if (targetIndex === -1) {
-        availableSubBoardIndex = board
+        const availableSubBoardIndex = board
             .map((subBoard, index) => ({ subBoard, index }))
             .filter(({ subBoard }) => checkResult(subBoard) === null)
             .map(({ index }) => index);
-        for(let index of priorityOrder) {
-            if(availableSubBoardIndex.includes(index)) {
+        //如果有可以直接形成3连的小棋盘，则直接在对应位置落子
+        for (let index of availableSubBoardIndex) {
+            const winningMove = findWinningMove(board[index], 'O');
+            if (winningMove !== -1) {
                 i = index;
-                break;
+                j = winningMove;
+                return { i, j };
             }
         }
+        //否则，随机选一个小棋盘
+        i = availableSubBoardIndex[Math.floor(Math.random() * availableSubBoardIndex.length)];
     } else {
         i = targetIndex;
     }
     const targetSubBoard = board[i];    //确定行棋子棋盘
 
-    const subBoardCopy = [...targetSubBoard];
-    j = findBestMove(subBoardCopy);
+    //如果差1个形成3连，则在该处落子
+    const winningMove = findWinningMove(targetSubBoard, 'O');
+    if (winningMove !== -1) {
+        j = winningMove;
+        return { i, j };
+    }
+
+    //否则，采取防御，找出不会让下个棋盘出现X能够三连的位置
+    const availableCellIndex = targetSubBoard
+        .map((cell, index) => ({ cell, index }))
+        .filter(({ cell }) => cell === null)
+        .map(({ index }) => index);
+    const cellIndexCandi = [];
+    for (let index of availableCellIndex) {
+        if (findWinningMove(board[index], 'X') === -1 || checkResult(board[index]) !== null) {
+            cellIndexCandi.push(index);
+        }
+    }
+    if (cellIndexCandi.length !== 0) {
+        j = cellIndexCandi[Math.floor(Math.random() * cellIndexCandi.length)];
+    } else {
+        j = availableCellIndex[Math.floor(Math.random() * availableCellIndex.length)];
+
+    }
 
     return { i, j };
 
-}
-
-function evaluate(board, depth) {
-    const result = checkResult(board);
-    if (result === 'O') return 10 - depth;
-    if (result === 'X') return depth - 10;
-    return 0;
-}
-
-function minmax(board, depth, isMaximizing, alpha, beta) {
-    const score = evaluate(board, depth);
-    if (score !== 0 || isFull(board)) return score;
-
-    if (isMaximizing) {
-        let best = -Infinity;
-        for (let i of priorityOrder) {
-            if (board[i] === null) {
-                board[i] === 'O';
-                best = Math.max(best, minmax(board, depth + 1, false));
-                board[i] = null;
-                alpha = Math.max(alpha, best);
-                if(alpha >= beta) break;
-            }
-        }
-        return best;
-    } else {
-        let best = Infinity;
-        for (let i of priorityOrder) {
-            if (board[i] === null) {
-                board[i] = 'X';
-                best = Math.min(best, minmax(board, depth + 1, true));
-                board[i] = null;
-                beta = Math.min(beta, best);
-                if(alpha >= beta) break;
-            }
-        }
-        return best;
-    }
-}
-
-function findBestMove(board) {
-    //如果棋盘为空，则在任意位置落子，减少分支数
-    if (isEmpty(board)) return Math.floor(Math.random() * 9);
-    
-    let bestScore = -Infinity;
-    let bestMove = -1;
-    for (let i = 0; i < 9; i++) {
-        if (board[i] === null) {
-            board[i] = 'O';
-            const score = minmax(board, 0, false, -Infinity, Infinity);
-            board[i] = null;
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = i;
-            }
-        }
-    }
-    return bestMove;
 }
