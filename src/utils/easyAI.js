@@ -1,6 +1,9 @@
 import { checkResult } from "./boardHelper.js";
 
-export default function calculateEasyAIMove(board, targetIndex) {
+export default function calculateEasyAIMove(board, targetIndex, nextPiece) {
+    const AI = nextPiece;
+    const HUMAN = nextPiece === 'O' ? 'X' : 'O';
+
     let i, j;
     let availableSubBoardIndex = [];
     let availableCellIndex = [];

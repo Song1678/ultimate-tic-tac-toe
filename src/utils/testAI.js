@@ -1,231 +1,326 @@
-export default function calculateHardAIMove(board, targetIndex) {
-  // ------------------------------
-  // 1. 整合你提供的帮手函数（避免外部依赖）
-  // ------------------------------
-  function checkResult(subBoard) {
-    const lines = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8], // 行
-      [0, 3, 6], [1, 4, 7], [2, 5, 8], // 列
-      [0, 4, 8], [2, 4, 6]             // 对角线
-    ];
-    for (const [a, b, c] of lines) {
-      if (subBoard[a] && subBoard[a] === subBoard[b] && subBoard[a] === subBoard[c]) {
-        return subBoard[a];
-      }
+export default function calculateHardAIMove(board, targetIndex, nextPiece) {
+  const AI = nextPiece;
+  const HUMAN = nextPiece === 'O' ? 'X' : 'O';
+
+  const LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
+  ];
+
+  // 预计算：每个格子所在的线路索引
+  const CELL_LINES = Array.from({ length: 9 }, (_, i) =>
+    LINES.reduce((acc, line, li) => (line.includes(i) ? [...acc, li] : acc), [])
+  );
+
+  // ---------- 基础工具 ----------
+
+  function checkWinner(cells) {
+    for (const [a, b, c] of LINES) {
+      if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) return cells[a];
     }
-    if (!subBoard.includes(null)) return 'T';
+    if (!cells.includes(null)) return 'T';
     return null;
   }
 
-  // ------------------------------
-  // 2. 终极井字棋核心逻辑（适配二维数组）
-  // ------------------------------
-  const AI_PIECE = 'O'; // 假设AI执O，可根据需求改为'X'
-  const HUMAN_PIECE = 'X';
+  function opponent(p) { return p === AI ? HUMAN : AI; }
 
-  // 检查全局游戏结果
-  function checkGlobalResult(currentBoard) {
-    const globalBoard = currentBoard.map(sub => checkResult(sub));
-    const globalWinner = checkResult(globalBoard);
-    if (globalWinner && globalWinner !== 'T') return globalWinner;
-    // 检查全局平局（所有小棋盘都结束）
-    if (globalBoard.every(res => res !== null)) return 'T';
-    return null;
-  }
+  function isSubDone(sub) { return checkWinner(sub) !== null; }
 
-  // 检查小棋盘是否已结束（有胜负或平局）
-  function isSubBoardFinished(subBoard) {
-    return checkResult(subBoard) !== null;
-  }
+  function getSubResults(b) { return b.map(sub => checkWinner(sub)); }
 
-  // 获取所有合法移动
-  function getLegalMoves(currentBoard, currentTargetIndex) {
+  function cloneBoard(b) { return b.map(s => s.slice()); }
+
+  function getLegalMoves(b, ti, subResults) {
     const moves = [];
-    let availableSubBoards = [];
-
-    // 确定可用的小棋盘
-    if (currentTargetIndex === -1 || isSubBoardFinished(currentBoard[currentTargetIndex])) {
-      // 无限制：选所有未结束的小棋盘
+    const subs = [];
+    if (ti === -1 || subResults[ti] !== null) {
       for (let i = 0; i < 9; i++) {
-        if (!isSubBoardFinished(currentBoard[i])) {
-          availableSubBoards.push(i);
-        }
+        if (subResults[i] === null) subs.push(i);
       }
     } else {
-      // 有限制：只能在指定小棋盘落子
-      availableSubBoards.push(currentTargetIndex);
+      subs.push(ti);
     }
-
-    // 生成所有合法落子 {i, j}
-    for (let i of availableSubBoards) {
+    for (const i of subs) {
       for (let j = 0; j < 9; j++) {
-        if (currentBoard[i][j] === null) {
-          moves.push({ i, j });
-        }
+        if (b[i][j] === null) moves.push({ i, j });
       }
     }
     return moves;
   }
 
-  // 深拷贝二维棋盘
-  function copyBoard(currentBoard) {
-    return currentBoard.map(subBoard => [...subBoard]);
-  }
-
-  // 应用移动，返回新状态
-  function applyMove(currentBoard, currentTargetIndex, move, player) {
-    const newBoard = copyBoard(currentBoard);
-    newBoard[move.i][move.j] = player;
-
-    // 计算新的目标小棋盘
-    let newTargetIndex = move.j;
-    if (isSubBoardFinished(newBoard[newTargetIndex])) {
-      newTargetIndex = -1;
+  // 只检查经过 cell j 的线路是否形成三连
+  function checkCellWin(sub, j) {
+    for (const li of CELL_LINES[j]) {
+      const [a, b, c] = LINES[li];
+      if (sub[a] && sub[a] === sub[b] && sub[a] === sub[c]) return sub[a];
     }
-
-    // 检查游戏是否结束
-    const globalResult = checkGlobalResult(newBoard);
-    const gameOver = globalResult !== null;
-    const winner = globalResult;
-
-    return { newBoard, newTargetIndex, gameOver, winner };
+    return null;
   }
 
-  // 切换玩家
-  function switchPlayer(player) {
-    return player === AI_PIECE ? HUMAN_PIECE : AI_PIECE;
-  }
+  // ---------- 优化2：即时必胜/必堵 ----------
 
-  // ------------------------------
-  // 3. MCTS 算法实现
-  // ------------------------------
-  class MCTSNode {
-    constructor(currentBoard, currentTargetIndex, currentPlayer, parent = null, move = null) {
-      this.board = currentBoard;
-      this.targetIndex = currentTargetIndex;
-      this.player = currentPlayer; // 下一步要下的玩家
-      this.parent = parent;
-      this.move = move; // 到达此节点的移动 {i, j}
-      this.children = [];
-      this.visits = 0;
-      this.wins = 0; // 从AI视角统计的胜利次数
-      this.untriedMoves = getLegalMoves(currentBoard, currentTargetIndex);
-      this.gameOver = checkGlobalResult(currentBoard) !== null || this.untriedMoves.length === 0;
-      this.winner = checkGlobalResult(currentBoard);
-    }
-  }
-
-  // UCT 公式选择子节点
-  function uctSelect(node) {
-    const C = Math.sqrt(2); // 探索系数
-    let bestChild = null;
-    let bestUct = -Infinity;
-
-    for (let child of node.children) {
-      const winRate = child.wins / child.visits;
-      const explorationTerm = C * Math.sqrt(Math.log(node.visits) / child.visits);
-      const uct = winRate + explorationTerm;
-
-      if (uct > bestUct) {
-        bestUct = uct;
-        bestChild = child;
+  function findImmediateWin(b, ti, player) {
+    const sr = getSubResults(b);
+    const moves = getLegalMoves(b, ti, sr);
+    for (const move of moves) {
+      const sub = b[move.i];
+      sub[move.j] = player;
+      const won = checkCellWin(sub, move.j) === player;
+      sub[move.j] = null;
+      if (won) {
+        sr[move.i] = player;
+        const globalWin = checkWinner(sr) === player;
+        sr[move.i] = checkWinner(b[move.i]); // 还原
+        if (globalWin) return move;
       }
     }
-    return bestChild;
+    return null;
   }
 
-  // 扩展节点
-  function expand(node) {
-    if (node.untriedMoves.length === 0) return null;
-
-    // 随机选一个未尝试的移动
-    const moveIndex = Math.floor(Math.random() * node.untriedMoves.length);
-    const move = node.untriedMoves.splice(moveIndex, 1)[0];
-
-    // 应用移动
-    const nextPlayer = switchPlayer(node.player);
-    const { newBoard, newTargetIndex, gameOver, winner } = applyMove(
-      node.board, node.targetIndex, move, node.player
-    );
-
-    // 创建子节点
-    const child = new MCTSNode(newBoard, newTargetIndex, nextPlayer, node, move);
-    child.gameOver = gameOver;
-    child.winner = winner;
-    node.children.push(child);
-
-    return child;
+  function findBlockMove(b, ti) {
+    // 模拟：如果对手下一步能在任意位置赢，找到那个位置并堵
+    const sr = getSubResults(b);
+    const myMoves = getLegalMoves(b, ti, sr);
+    // 对手可能落子的所有位置
+    for (const move of myMoves) {
+      const sub = b[move.i];
+      sub[move.j] = HUMAN;
+      const won = checkCellWin(sub, move.j) === HUMAN;
+      sub[move.j] = null;
+      if (won) {
+        sr[move.i] = HUMAN;
+        const globalWin = checkWinner(sr) === HUMAN;
+        sr[move.i] = checkWinner(b[move.i]);
+        if (globalWin) return move;
+      }
+    }
+    return null;
   }
 
-  // 随机模拟到游戏结束
-  function simulate(node) {
-    let currentBoard = copyBoard(node.board);
-    let currentTargetIndex = node.targetIndex;
-    let currentPlayer = node.player;
-    let gameOver = node.gameOver;
-    let winner = node.winner;
+  // ---------- 优化3+4：快速启发评分 ----------
 
-    while (!gameOver) {
-      const legalMoves = getLegalMoves(currentBoard, currentTargetIndex);
-      if (legalMoves.length === 0) break;
+  function heuristicMoveScore(b, move, player, subResults) {
+    let score = 0;
+    const sub = b[move.i];
+    const opp = opponent(player);
 
-      // 随机选一个移动
-      const move = legalMoves[Math.floor(Math.random() * legalMoves.length)];
-      const result = applyMove(currentBoard, currentTargetIndex, move, currentPlayer);
+    // 原地修改检查，不拷贝
+    sub[move.j] = player;
+    if (checkCellWin(sub, move.j) === player) {
+      score += 100;
+      // 赢了小棋盘还能赢全局？
+      subResults[move.i] = player;
+      if (checkWinner(subResults) === player) score += 500;
+      subResults[move.i] = null;
+    }
+    sub[move.j] = opp;
+    if (checkCellWin(sub, move.j) === opp) {
+      score += 80;
+      subResults[move.i] = opp;
+      if (checkWinner(subResults) === opp) score += 400;
+      subResults[move.i] = null;
+    }
+    sub[move.j] = null; // 还原
 
-      currentBoard = result.newBoard;
-      currentTargetIndex = result.newTargetIndex;
-      gameOver = result.gameOver;
-      winner = result.winner;
-      currentPlayer = switchPlayer(currentPlayer);
+    // 位置分
+    if (move.j === 4) score += 5;
+    else if (move.j === 0 || move.j === 2 || move.j === 6 || move.j === 8) score += 3;
+
+    // 送子惩罚
+    const destIdx = move.j;
+    if (subResults[destIdx] !== null) {
+      score -= 10; // 送对手自由选择
+    } else {
+      const destSub = b[destIdx];
+      for (const [a, bIdx, c] of LINES) {
+        const vals = [destSub[a], destSub[bIdx], destSub[c]];
+        const oppCount = vals.filter(v => v === opp).length;
+        const emptyCount = vals.filter(v => v === null).length;
+        if (oppCount === 2 && emptyCount === 1) {
+          score -= 60;
+          subResults[destIdx] = opp;
+          if (checkWinner(subResults) === opp) score -= 500;
+          subResults[destIdx] = null;
+          break;
+        }
+      }
     }
 
-    // 返回结果：1=AI赢, -1=人类赢, 0=平局
-    if (winner === AI_PIECE) return 1;
-    if (winner === HUMAN_PIECE) return -1;
+    return score;
+  }
+
+  // ---------- 优化1：快速模拟（就地修改 + 增量检查） ----------
+
+  function simulate(b, ti, startPlayer) {
+    const simBoard = cloneBoard(b); // 只拷贝一次
+    const sr = getSubResults(simBoard);
+    let player = startPlayer;
+
+    for (let depth = 0; depth < 50; depth++) {
+      const moves = getLegalMoves(simBoard, ti, sr);
+      if (moves.length === 0) return 0;
+
+      // 70% 启发选择，30% 随机
+      let chosen;
+      if (Math.random() < 0.7 && moves.length > 1) {
+        let bestS = -Infinity, bestMs = [];
+        for (const m of moves) {
+          const s = heuristicMoveScore(simBoard, m, player, sr);
+          if (s > bestS) { bestS = s; bestMs = [m]; }
+          else if (s === bestS) bestMs.push(m);
+        }
+        chosen = bestMs[Math.floor(Math.random() * bestMs.length)];
+      } else {
+        chosen = moves[Math.floor(Math.random() * moves.length)];
+      }
+
+      // 就地落子
+      simBoard[chosen.i][chosen.j] = player;
+
+      // 增量更新：只检查被修改的小棋盘
+      sr[chosen.i] = checkWinner(simBoard[chosen.i]);
+
+      // 用缓存的 subResults 检查全局
+      const globalResult = checkWinner(sr);
+      if (globalResult === AI) return 1;
+      if (globalResult === HUMAN) return -1;
+      if (globalResult === 'T' || sr.every(r => r !== null)) return 0;
+
+      ti = sr[chosen.j] !== null ? -1 : chosen.j;
+      player = opponent(player);
+    }
     return 0;
   }
 
-  // 回溯更新统计
+  // ---------- MCTS 核心 ----------
+
+  class Node {
+    constructor(b, ti, player, parent, move) {
+      this.board = b;
+      this.targetIndex = ti;
+      this.player = player;
+      this.parent = parent || null;
+      this.move = move || null;
+      this.children = [];
+      this.visits = 0;
+      this.wins = 0;
+      this.sr = getSubResults(b);
+      this.untried = getLegalMoves(b, ti, this.sr);
+      this.result = checkWinner(this.sr);
+      if (this.result === 'T' || (this.result === null && this.sr.every(r => r !== null))) {
+        this.result = this.result || 'T';
+      }
+    }
+    get isTerminal() {
+      return this.result !== null || (this.untried.length === 0 && this.children.length === 0);
+    }
+    get isFullyExpanded() {
+      return this.untried.length === 0;
+    }
+  }
+
+  const C = 1.414;
+
+  function uctSelect(node) {
+    let best = null, bestVal = -Infinity;
+    const logP = Math.log(node.visits);
+    for (const child of node.children) {
+      const wr = node.player === AI
+        ? child.wins / child.visits
+        : 1 - child.wins / child.visits;
+      const uct = wr + C * Math.sqrt(logP / child.visits);
+      if (uct > bestVal) { bestVal = uct; best = child; }
+    }
+    return best;
+  }
+
+  // 优化4：智能展开——优先展开启发评分高的走法
+  function expand(node) {
+    if (node.untried.length === 0) return null;
+
+    let bestIdx = 0;
+    if (node.untried.length > 1) {
+      let bestScore = -Infinity;
+      const sr = node.sr.slice();
+      for (let i = 0; i < node.untried.length; i++) {
+        const s = heuristicMoveScore(node.board, node.untried[i], node.player, sr);
+        if (s > bestScore) { bestScore = s; bestIdx = i; }
+      }
+    }
+
+    const move = node.untried.splice(bestIdx, 1)[0];
+    const nb = cloneBoard(node.board);
+    nb[move.i][move.j] = node.player;
+    let nti = move.j;
+    if (isSubDone(nb[nti])) nti = -1;
+
+    const child = new Node(nb, nti, opponent(node.player), node, move);
+    node.children.push(child);
+    return child;
+  }
+
   function backpropagate(node, result) {
     while (node !== null) {
       node.visits++;
-      // 从AI视角统计：赢了+1，平局+0.5，输了+0
       if (result === 1) node.wins += 1;
       else if (result === 0) node.wins += 0.5;
       node = node.parent;
     }
   }
 
-  // ------------------------------
-  // 4. 执行 MCTS 搜索
-  // ------------------------------
-  const ITERATIONS = 10000; // 迭代次数（越多越强，但越慢）
-  const root = new MCTSNode(board, targetIndex, AI_PIECE); // AI先行
+  // ---------- 执行 ----------
 
-  for (let i = 0; i < ITERATIONS; i++) {
-    // 1. 选择
+  // 优化2：先检查即时必胜/必堵
+  const instantWin = findImmediateWin(board, targetIndex, AI);
+  if (instantWin) return instantWin;
+
+  const mustBlock = findBlockMove(board, targetIndex);
+  if (mustBlock) return mustBlock;
+
+  const root = new Node(board, targetIndex, AI, null, null);
+
+  if (root.untried.length === 1 && root.children.length === 0) {
+    return root.untried[0];
+  }
+
+  const TIME_LIMIT = 7000;
+  const MIN_ITERATIONS = 10000;
+  const MAX_ITERATIONS = 300000;
+  const startTime = Date.now();
+  let iterations = 0;
+
+  while (iterations < MAX_ITERATIONS) {
+    if (iterations >= MIN_ITERATIONS && (iterations & 255) === 0) {
+      if (Date.now() - startTime >= TIME_LIMIT) break;
+    }
+
     let node = root;
-    while (node.children.length > 0 && node.untriedMoves.length === 0) {
+    while (node.isFullyExpanded && node.children.length > 0) {
       node = uctSelect(node);
     }
 
-    // 2. 扩展
-    if (!node.gameOver) {
+    if (!node.isTerminal && !node.isFullyExpanded) {
       node = expand(node) || node;
     }
 
-    // 3. 模拟
-    const result = simulate(node);
+    // 优化1：快速模拟
+    let result;
+    if (node.result !== null) {
+      result = node.result === AI ? 1 : (node.result === HUMAN ? -1 : 0);
+    } else {
+      result = simulate(node.board, node.targetIndex, node.player);
+    }
 
-    // 4. 回溯
     backpropagate(node, result);
+    iterations++;
   }
 
-  // 选择访问次数最多的移动（最稳健）
-  let bestMove = null;
-  let mostVisits = -1;
-  for (let child of root.children) {
+  console.log(`AI进行了${iterations}次模拟`);
+  console.log(`AI进行了${Date.now() - startTime}ms的mtcs搜索`);
+
+  let bestMove = null, mostVisits = -1;
+  for (const child of root.children) {
     if (child.visits > mostVisits) {
       mostVisits = child.visits;
       bestMove = child.move;

@@ -1,27 +1,30 @@
 import calculateEasyAIMove from "./easyAI.js";
 import calculateMediumAIMove from "./mediumAI.js";
-import calculateHardAIMove from "./testAI.js";
+import calculateHardAIMove from "./hardAI.js";
+import calculateTestAIMove from "./testAI.js"
 
-function calculateAIMove(board, targetIndex, difficulty) {
+function calculateAIMove(board, targetIndex, nextPiece, difficulty) {
     switch (difficulty) {
         case 'easy':
-            return calculateEasyAIMove(board, targetIndex);
+            return calculateEasyAIMove(board, targetIndex, nextPiece);
         case 'medium':
-            return calculateMediumAIMove(board, targetIndex);
+            return calculateMediumAIMove(board, targetIndex, nextPiece);
         case 'hard':
-            return calculateHardAIMove(board, targetIndex);
+            return calculateHardAIMove(board, targetIndex, nextPiece);
+        case 'test':
+            return calculateTestAIMove(board, targetIndex, nextPiece);
         default:
-            return calculateEasyAIMove(board, targetIndex);
+            return calculateEasyAIMove(board, targetIndex, nextPiece);
     }
 }
 
 self.onmessage = (e) => {
-    const { flatBoard, targetIndex, difficulty } = e.data;
+    const { flatBoard, targetIndex, nextPiece, difficulty } = e.data;
     //在worker线程里复原二维数组
     const board = [];
     for (let i = 0; i < 9; i++) {
         board.push(flatBoard.slice(i * 9, (i + 1) * 9));
     }
-    const aiMove = calculateAIMove(board, targetIndex, difficulty);
+    const aiMove = calculateAIMove(board, targetIndex, nextPiece, difficulty );
     self.postMessage(aiMove);
 }
