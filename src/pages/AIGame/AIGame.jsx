@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';
 import AIWorker from '@/utils/ai.worker.js?worker';
 
-const AI_DELAY_CONFIG = { easy: 500, medium: 1000, hard: 500 };
+const AI_DELAY_CONFIG = { easy: 500, medium: 1000, hard: 300 };
 
 export default function Game() {
     const [state, dispatch] = useReducer(gameReducer, {
@@ -18,14 +18,14 @@ export default function Game() {
     });
     const { board, targetIndex, nextPiece, isAIThinking } = state;
     //用useMemo优化计算，当仅设置ai思考状态board未改变时，无需重新计算
-    const subResults = useMemo(() =>        
+    const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
     const [searchParams, _] = useSearchParams();
     const difficulty = searchParams.get('difficulty') || 'easy';
     const aiDelayTime = AI_DELAY_CONFIG[difficulty] ?? AI_DELAY_CONFIG['easy'];
     const aiWorkerRef = useRef(null);
-    
+
     const handlePlay = useCallback((i) => {
         return (j) => {
             dispatch({ type: 'PLAY', payload: { i, j } });
@@ -59,19 +59,8 @@ export default function Game() {
 
     const [isAutoPlay, setIsAutoPlay] = useState(false);
     useEffect(() => {
-        if(result !== null) return;
+        if (nextPiece !== 'O' || result !== null) return;
 
-        //开启ai接管玩家下棋
-        if (isAutoPlay && nextPiece === 'X') {
-            dispatch({ type: 'SET_AI_THINKING', payload: true });
-            setTimeout(() => {
-                const flatBoard = board.flat();
-                aiWorkerRef.current.postMessage({ flatBoard, targetIndex, nextPiece, difficulty: 'test' });
-            }, aiDelayTime)
-            return;
-        }
-
-        //O方AI下棋
         dispatch({ type: 'SET_AI_THINKING', payload: true });
         const aiTimer = setTimeout(() => {
             //修复ai思考页面卡顿问题：扁平化数组，减少结构化克隆开销
@@ -81,14 +70,28 @@ export default function Game() {
 
         return () => clearTimeout(aiTimer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [nextPiece, isAutoPlay])
+    }, [nextPiece]);
+
+    //AI接管X
+    useEffect(() => {
+        if (!isAutoPlay || nextPiece !== 'X' || result !== null) return;
+
+        dispatch({ type: 'SET_AI_THINKING', payload: true });
+        const timer = setTimeout(() => {
+            const flatBoard = board.flat();
+            aiWorkerRef.current.postMessage({ flatBoard, targetIndex, nextPiece, difficulty: 'test' });
+        }, 500);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nextPiece, isAutoPlay]);
 
     return (
         <div className={styles.container}>
             <h1 className={styles.title}>终极井字棋</h1>
             <button onClick={() => {
                 setIsAutoPlay(!isAutoPlay);
-            }}>开/关testAI接管玩家</button>
+            }}>点击开关超级ai接管玩家</button>
             <div className={styles['game-wrap']}>
                 <Board
                     board={board}

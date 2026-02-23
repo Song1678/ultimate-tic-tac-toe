@@ -286,7 +286,7 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
 
   const TIME_LIMIT = 7000;
   const MIN_ITERATIONS = 10000;
-  const MAX_ITERATIONS = 300000;
+  const MAX_ITERATIONS = 200000;
   const startTime = Date.now();
   let iterations = 0;
 
