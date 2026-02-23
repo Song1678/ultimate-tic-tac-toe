@@ -101,11 +101,12 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 100px;
+    font-size: 21vmin;
     font-weight: 500;
+    line-height: 100%;
     transform-origin: left center;
     transform: rotateY(-90deg);
-    transition: transform 1s ease-out 0.5s
+    transition: transform 1s ease-out 0.5s;
 }
 
 .x-board,
