@@ -31,6 +31,12 @@
     justify-content: center;
 }
 
+.auto-label {
+    display: block;
+    margin-top: 3em;
+    cursor: pointer;
+}
+
 @media (max-aspect-ratio: 12 / 9) {
     .game-wrap {
         flex-direction: column-reverse;
@@ -38,5 +44,8 @@
     }
     .container {
         padding: 0;
+    }
+    .auto-label {
+        display: none;
     }
 }

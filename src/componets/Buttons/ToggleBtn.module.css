@@ -1,0 +1,38 @@
+.toggle-btn {
+    appearance: none;
+    transform: translateY(0.22em);
+    /* 原2rem → 2×0.6=1.2rem */
+    height: 1.2rem;
+    /* 原3.5rem → 3.5×0.6=2.1rem */
+    width: 2.1rem;
+    background-color: #fff;
+    position: relative;
+    /* 原0.2em → 0.2×0.6=0.12em（圆角同步缩放） */
+    border-radius: 0.12em;
+    cursor: pointer;
+    /* 可选：确保em单位基准统一（若未设置，默认继承浏览器16px） */
+    font-size: 16px;
+}
+
+.toggle-btn::before {
+    content: '';
+    display: block;
+    /* 原1.9em → 1.9×0.6=1.14em */
+    height: 1em;
+    width: 1em;
+    transform: translate(-50%, -50%);
+    position: absolute;
+    top: 50%;
+    /* 原calc(1.9em/2 + .3em) → 按60%缩放：calc(1.14em/2 + 0.18em) */
+    left: calc(1em/2 + 0.18em);
+    background-color: #E81B1B;
+    /* 圆角同步缩放 */
+    border-radius: 0.12em;
+    transition: .3s ease;
+}
+
+.toggle-btn:checked::before {
+    background-color: navy;
+    /* 原calc(100% - (1.9em/2 + .3em)) → 缩放后：calc(100% - (1.14em/2 + 0.18em)) */
+    left: calc(100% - (1em/2 + 0.18em));
+}

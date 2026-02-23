@@ -2,6 +2,7 @@ import styles from './AIGame.module.css'
 import Board from '@/componets/Board/Board.jsx';
 import BackBtn from '@/componets/Buttons/BackBtn.jsx';
 import ResetBtn from '@/componets/Buttons/ResetBtn.jsx';
+import ToggleBtn from '@/componets/Buttons/ToggleBtn.jsx';
 import { useState, useReducer, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';
@@ -89,24 +90,22 @@ export default function Game() {
     return (
         <div className={styles.container}>
             <h1 className={styles.title}>终极井字棋</h1>
-            <button onClick={() => {
-                setIsAutoPlay(!isAutoPlay);
-            }}>点击开关超级ai接管玩家</button>
             <div className={styles['game-wrap']}>
                 <Board
                     board={board}
                     targetIndex={targetIndex}
                     onPlay={handlePlay}
                     subResults={subResults}
-                    isGameOVer={result !== null}
+                    isGameOver={result !== null}
                     isWaiting={isAIThinking}
                 />
                 <InfoBox
                     result={result}
                     nextPiece={nextPiece}
                     targetIndex={targetIndex}
-                    reset={reset}
+                    onReset={reset}
                     isAIThinking={isAIThinking}
+                    onToggle={() => setIsAutoPlay(!isAutoPlay)}
                 />
             </div>
             <BackBtn />
@@ -114,7 +113,7 @@ export default function Game() {
     );
 }
 
-function InfoBox({ result, nextPiece, targetIndex, reset, isAIThinking }) {
+function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, onToggle, isAutoPlay }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
 
@@ -136,7 +135,10 @@ function InfoBox({ result, nextPiece, targetIndex, reset, isAIThinking }) {
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
             {!result && <p>{hintText}</p>}
-            {result && <ResetBtn callback={reset} />}
+            <label className={styles['auto-label']}>测试AI托管：
+                <ToggleBtn isChecked={isAutoPlay} callback={onToggle} />
+            </label>
+            {result && <ResetBtn callback={onReset} />}
         </aside>
     );
 }
