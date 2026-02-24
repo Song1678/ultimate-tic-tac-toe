@@ -2,29 +2,26 @@ import styles from './AIGame.module.css'
 import Board from '@/componets/Board/Board.jsx';
 import BackBtn from '@/componets/Buttons/BackBtn.jsx';
 import ResetBtn from '@/componets/Buttons/ResetBtn.jsx';
-import ToggleBtn from '@/componets/Buttons/ToggleBtn.jsx';
-import { useState, useReducer, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useReducer, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';
 import AIWorker from '@/utils/ai.worker.js?worker';
-
-const AI_DELAY_CONFIG = { easy: 500, medium: 1000, hard: 300 };
 
 export default function Game() {
     const [state, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
-        isAIThinking: false
+        isAIThinking: false,
+        isAutoPlay: false
     });
-    const { board, targetIndex, nextPiece, isAIThinking } = state;
+    const { board, targetIndex, nextPiece, isAIThinking, isAutoPlay } = state;
     //用useMemo优化计算，当仅设置ai思考状态board未改变时，无需重新计算
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
-    const [searchParams, _] = useSearchParams();
+    const [searchParams] = useSearchParams();
     const difficulty = searchParams.get('difficulty') || 'easy';
-    const aiDelayTime = AI_DELAY_CONFIG[difficulty] ?? AI_DELAY_CONFIG['easy'];
     const aiWorkerRef = useRef(null);
 
     const handlePlay = useCallback((i) => {
@@ -45,9 +42,9 @@ export default function Game() {
         //监听Worker返回结果
         aiWorkerRef.current.onmessage = (e) => {
             const aiMove = e.data;
+            console.log("主线程收到worker返回的结果:", aiMove);
             dispatch({ type: 'PLAY', payload: { i: aiMove.i, j: aiMove.j } });
             dispatch({ type: 'SET_AI_THINKING', payload: false });
-            console.log("aiMove: ", aiMove);
         };
 
         return () => {
@@ -58,32 +55,26 @@ export default function Game() {
         };
     }, []);
 
-    const [isAutoPlay, setIsAutoPlay] = useState(false);
+    //AI(O)自动落子
     useEffect(() => {
-        if (nextPiece !== 'O' || result !== null) return;
+        if (nextPiece !== 'O' || result !== null || isAIThinking) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
-        const aiTimer = setTimeout(() => {
-            //修复ai思考页面卡顿问题：扁平化数组，减少结构化克隆开销
-            const flatBoard = board.flat();
-            aiWorkerRef.current.postMessage({ flatBoard, targetIndex, nextPiece, difficulty });
-        }, aiDelayTime)
-
-        return () => clearTimeout(aiTimer);
+        //修复派发worker任务时页面卡顿问题：扁平化数组，减少结构化克隆开销
+        aiWorkerRef.current.postMessage({ flatBoard: board.flat(), targetIndex, nextPiece, difficulty });
+        console.log("O派发aiWorker任务");
+        // 故意仅依赖 nextPiece：只在轮次切换时触发，isAIThinking 作为守卫防止重复派发
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nextPiece]);
 
-    //AI接管X
+    //AI托管X落子
     useEffect(() => {
-        if (!isAutoPlay || nextPiece !== 'X' || result !== null) return;
+        if (!isAutoPlay || nextPiece !== 'X' || result !== null || isAIThinking) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
-        const timer = setTimeout(() => {
-            const flatBoard = board.flat();
-            aiWorkerRef.current.postMessage({ flatBoard, targetIndex, nextPiece, difficulty: 'test' });
-        }, 500);
-
-        return () => clearTimeout(timer);
+        aiWorkerRef.current.postMessage({ flatBoard: board.flat(), targetIndex, nextPiece, difficulty: 'test' });
+        console.log("X派发aiWorker任务");
+        // 故意仅依赖 nextPiece和isAutoPlay：只在轮次切换及开启托管时触发，isAIThinking 作为守卫防止重复派发
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nextPiece, isAutoPlay]);
 
@@ -105,7 +96,8 @@ export default function Game() {
                     targetIndex={targetIndex}
                     onReset={reset}
                     isAIThinking={isAIThinking}
-                    onToggle={() => setIsAutoPlay(!isAutoPlay)}
+                    isAutoPlay={isAutoPlay}
+                    onToggle={() => dispatch({ type: 'TOGGLE_AUTO_PLAY' })}
                 />
             </div>
             <BackBtn />
@@ -135,8 +127,13 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, onTogg
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
             {!result && <p>{hintText}</p>}
-            <label className={styles['auto-label']}>测试AI托管：
-                <ToggleBtn isChecked={isAutoPlay} callback={onToggle} />
+            <label className={styles['auto-label']}>测试AI托管X：
+                <input
+                    className={styles['toggle-btn']}
+                    type="checkbox"
+                    checked={isAutoPlay}
+                    onChange={onToggle}
+                />
             </label>
             {result && <ResetBtn callback={onReset} />}
         </aside>
@@ -165,13 +162,20 @@ function gameReducer(state, action) {
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
                 nextPiece: 'X',
-                isAIThinking: false
+                isAIThinking: false,
+                isAutoPlay: false
             }
         }
         case 'SET_AI_THINKING': {
             return {
                 ...state,
                 isAIThinking: action.payload
+            }
+        }
+        case 'TOGGLE_AUTO_PLAY': {
+            return {
+                ...state,
+                isAutoPlay: !state.isAutoPlay
             }
         }
         default:

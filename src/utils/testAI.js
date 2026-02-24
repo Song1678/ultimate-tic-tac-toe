@@ -316,8 +316,8 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
     iterations++;
   }
 
-  console.log(`AI进行了${iterations}次模拟`);
-  console.log(`AI进行了${Date.now() - startTime}ms的mtcs搜索`);
+  // console.log(`AI进行了${iterations}次模拟`);
+  // console.log(`AI进行了${Date.now() - startTime}ms的mtcs搜索`);
 
   let bestMove = null, mostVisits = -1;
   for (const child of root.children) {

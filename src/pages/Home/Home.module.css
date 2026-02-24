@@ -3,7 +3,6 @@
     min-height: calc(100vh - 160px);
     box-sizing: border-box;
     padding: 0 50px 50px;
-    /* border: 1px solid black; */
 }
 
 .container * {
@@ -32,8 +31,6 @@
     position: absolute;
     display: flex;
     transition: transform 0.75s ease-in-out;
-    
-    /* border: 1px solid white; */
 }
 
 .opt {

@@ -37,6 +37,37 @@
     cursor: pointer;
 }
 
+.toggle-btn {
+    appearance: none;
+    transform: translateY(0.22em);
+    height: 1.2rem;
+    width: 2.1rem;
+    background-color: #fff;
+    position: relative;
+    border-radius: 0.12em;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.toggle-btn::before {
+    content: '';
+    display: block;
+    height: 1em;
+    width: 1em;
+    transform: translate(-50%, -50%);
+    position: absolute;
+    top: 50%;
+    left: calc(1em/2 + 0.18em);
+    background-color: #E81B1B;
+    border-radius: 0.12em;
+    transition: .3s ease;
+}
+
+.toggle-btn:checked::before {
+    background-color: navy;
+    left: calc(100% - (1em/2 + 0.18em));
+}
+
 @media (max-aspect-ratio: 12 / 9) {
     .game-wrap {
         flex-direction: column-reverse;
