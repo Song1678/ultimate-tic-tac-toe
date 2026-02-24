@@ -7,15 +7,16 @@ import { useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';
 import AIWorker from '@/utils/ai.worker.js?worker';
 
-export default function Game() {
+export default function AIGame() {
     const [state, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
         isAIThinking: false,
-        isAutoPlay: false
+        isAutoPlayX: false,
+        isAutoPlayO: true
     });
-    const { board, targetIndex, nextPiece, isAIThinking, isAutoPlay } = state;
+    const { board, targetIndex, nextPiece, isAIThinking, isAutoPlayX, isAutoPlayO } = state;
     //用useMemo优化计算，当仅设置ai思考状态board未改变时，无需重新计算
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
@@ -26,7 +27,18 @@ export default function Game() {
 
     const handlePlay = useCallback((i) => {
         return (j) => {
-            dispatch({ type: 'PLAY', payload: { i, j } });
+            dispatch({ type: 'HUMAN_PLAY', payload: { i, j } });
+        };
+    }, []);
+
+    const initWorker = useCallback(() => {
+        aiWorkerRef.current?.terminate();
+        aiWorkerRef.current = new AIWorker();
+        //监听Worker返回结果
+        aiWorkerRef.current.onmessage = (e) => {
+            const aiMove = e.data;
+            console.log("主线程收到worker返回的结果:", aiMove);
+            dispatch({ type: 'AI_PLAY', payload: { i: aiMove.i, j: aiMove.j } });
         };
     }, []);
 
@@ -34,49 +46,38 @@ export default function Game() {
         dispatch({
             type: 'RESET'
         });
+        initWorker();    // 终止旧任务，重建 Worker
     }
 
     //初始化Worker（组件挂载时创建一次）
     useEffect(() => {
-        aiWorkerRef.current = new AIWorker();
-        //监听Worker返回结果
-        aiWorkerRef.current.onmessage = (e) => {
-            const aiMove = e.data;
-            console.log("主线程收到worker返回的结果:", aiMove);
-            dispatch({ type: 'PLAY', payload: { i: aiMove.i, j: aiMove.j } });
-            dispatch({ type: 'SET_AI_THINKING', payload: false });
-        };
+        initWorker();
 
-        return () => {
-            if (aiWorkerRef.current) {
-                aiWorkerRef.current.terminate();
-                aiWorkerRef.current = null;
-            }
-        };
-    }, []);
+        return () => aiWorkerRef.current?.terminate();
+    }, [initWorker]);
 
-    //AI(O)自动落子
+    //AI托管O落子
     useEffect(() => {
-        if (nextPiece !== 'O' || result !== null || isAIThinking) return;
+        if (!isAutoPlayO || nextPiece !== 'O' || result !== null || isAIThinking) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
         //修复派发worker任务时页面卡顿问题：扁平化数组，减少结构化克隆开销
         aiWorkerRef.current.postMessage({ flatBoard: board.flat(), targetIndex, nextPiece, difficulty });
         console.log("O派发aiWorker任务");
-        // 故意仅依赖 nextPiece：只在轮次切换时触发，isAIThinking 作为守卫防止重复派发
+        // 故意仅依赖 nextPiece和isAutoPlayO：只在轮次切换及开启托管时触发，isAIThinking 作为守卫防止重复派发
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [nextPiece]);
+    }, [nextPiece, isAutoPlayO]);
 
     //AI托管X落子
     useEffect(() => {
-        if (!isAutoPlay || nextPiece !== 'X' || result !== null || isAIThinking) return;
+        if (!isAutoPlayX || nextPiece !== 'X' || result !== null || isAIThinking) return;
 
         dispatch({ type: 'SET_AI_THINKING', payload: true });
         aiWorkerRef.current.postMessage({ flatBoard: board.flat(), targetIndex, nextPiece, difficulty: 'test' });
         console.log("X派发aiWorker任务");
-        // 故意仅依赖 nextPiece和isAutoPlay：只在轮次切换及开启托管时触发，isAIThinking 作为守卫防止重复派发
+        // 故意仅依赖 nextPiece和isAutoPlayX：只在轮次切换及开启托管时触发，isAIThinking 作为守卫防止重复派发
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [nextPiece, isAutoPlay]);
+    }, [nextPiece, isAutoPlayX]);
 
     return (
         <div className={styles.container}>
@@ -96,8 +97,11 @@ export default function Game() {
                     targetIndex={targetIndex}
                     onReset={reset}
                     isAIThinking={isAIThinking}
-                    isAutoPlay={isAutoPlay}
-                    onToggle={() => dispatch({ type: 'TOGGLE_AUTO_PLAY' })}
+                    isAutoPlayX={isAutoPlayX}
+                    isAutoPlayO={isAutoPlayO}
+                    onToggleX={() => dispatch({ type: 'TOGGLE_AUTO_PLAY_X' })}
+                    onToggleO={() => dispatch({ type: 'TOGGLE_AUTO_PLAY_O' })}
+                    difficulty={difficulty}
                 />
             </div>
             <BackBtn />
@@ -105,7 +109,13 @@ export default function Game() {
     );
 }
 
-function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, onToggle, isAutoPlay }) {
+const DIFFI_CONFIG = {
+    'easy': "简单",
+    'medium': "中等",
+    'hard': "困难"
+}
+
+function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, isAutoPlayX, isAutoPlayO, onToggleX, onToggleO, difficulty }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
 
@@ -127,12 +137,22 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, onTogg
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
             {!result && <p>{hintText}</p>}
-            <label className={styles['auto-label']}>测试AI托管X：
+            <label className={styles['auto-x-label']}>
+                内测AI托管X：
                 <input
                     className={styles['toggle-btn']}
                     type="checkbox"
-                    checked={isAutoPlay}
-                    onChange={onToggle}
+                    checked={isAutoPlayX}
+                    onChange={onToggleX}
+                />
+            </label>
+            <label className={styles['auto-o-label']}>
+                <span>{DIFFI_CONFIG[difficulty] ?? ''}</span>AI托管O：
+                <input
+                    className={styles['toggle-btn']}
+                    type="checkbox"
+                    checked={isAutoPlayO}
+                    onChange={onToggleO}
                 />
             </label>
             {result && <ResetBtn callback={onReset} />}
@@ -142,8 +162,9 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, onTogg
 
 function gameReducer(state, action) {
     switch (action.type) {
-        case 'PLAY': {
+        case 'HUMAN_PLAY': {
             const { i, j } = action.payload;
+            if (state.board[i][j] !== null) return state;   // 轻量守卫：仅防止覆盖已有棋子
             const newBoard = [...state.board];
             newBoard[i] = [...state.board[i]];
             newBoard[i][j] = state.nextPiece;
@@ -156,6 +177,20 @@ function gameReducer(state, action) {
                 nextPiece: newNextPiece
             };
         }
+        case 'AI_PLAY': {
+            const { i, j } = action.payload;
+            if (state.board[i][j] !== null) return state;
+            const newBoard = [...state.board];
+            newBoard[i] = [...state.board[i]];
+            newBoard[i][j] = state.nextPiece;
+            return {
+                ...state,
+                board: newBoard,
+                targetIndex: checkResult(newBoard[j]) === null ? j : -1,
+                nextPiece: state.nextPiece === 'X' ? 'O' : 'X',
+                isAIThinking: false  // 重置isAIThinking锁
+            };
+        }
         case 'RESET': {
             return {
                 ...state,
@@ -163,7 +198,8 @@ function gameReducer(state, action) {
                 targetIndex: -1,
                 nextPiece: 'X',
                 isAIThinking: false,
-                isAutoPlay: false
+                isAutoPlayX: false,
+                isAutoPlayO: true
             }
         }
         case 'SET_AI_THINKING': {
@@ -172,10 +208,16 @@ function gameReducer(state, action) {
                 isAIThinking: action.payload
             }
         }
-        case 'TOGGLE_AUTO_PLAY': {
+        case 'TOGGLE_AUTO_PLAY_X': {
             return {
                 ...state,
-                isAutoPlay: !state.isAutoPlay
+                isAutoPlayX: !state.isAutoPlayX
+            }
+        }
+        case 'TOGGLE_AUTO_PLAY_O': {
+            return {
+                ...state,
+                isAutoPlayO: !state.isAutoPlayO
             }
         }
         default:
