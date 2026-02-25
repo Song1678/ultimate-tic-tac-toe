@@ -1,7 +1,7 @@
 import styles from './AIGame.module.css'
-import Board from '@/componets/Board/Board.jsx';
-import BackBtn from '@/componets/Buttons/BackBtn.jsx';
-import ResetBtn from '@/componets/Buttons/ResetBtn.jsx';
+import Board from '@/components/Board/Board.jsx';
+import BackBtn from '@/components/Buttons/BackBtn.jsx';
+import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
 import { useReducer, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { checkResult } from '@/utils/boardHelper.js';

@@ -1,7 +1,7 @@
 import styles from './Game.module.css';
-import Board from '@/componets/Board/Board.jsx';
-import BackBtn from '@/componets/Buttons/BackBtn.jsx';
-import ResetBtn from '@/componets/Buttons/ResetBtn.jsx';
+import Board from '@/components/Board/Board.jsx';
+import BackBtn from '@/components/Buttons/BackBtn.jsx';
+import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
 import { useReducer, useMemo, useCallback } from 'react';
 import { checkResult } from '@/utils/boardHelper.js';
 
