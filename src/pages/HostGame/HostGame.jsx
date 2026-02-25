@@ -3,20 +3,22 @@ import { io } from 'socket.io-client';
 import styles from './HostGame.module.css';
 import { checkResult } from '@/utils/boardHelper.js';
 import Board from '@/components/Board/Board.jsx';
-import BackBtn from '@/components/Buttons/BackBtn.jsx'
+import BackBtn from '@/components/Buttons/BackBtn.jsx';
+import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
 
 const serverUrl = 'http://localhost:3001';  // 部署时需要修改为实际服务器地址
 
 export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
     const [isGameStart, setIsGameStart] = useState(false);
-    const socketRef = useRef(null); // 使用 useRef 存储 socket 实例
+    const socketRef = useRef(null);
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
-        nextPiece: 'X'
+        nextPiece: 'X',
+        myPiece: 'X'            //我方执有的棋子，默认为X
     });
-    const { board, targetIndex, nextPiece } = gameState;
+    const { board, targetIndex, nextPiece, myPiece } = gameState;
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
@@ -24,13 +26,16 @@ export default function HostGame() {
     const handlePlay = useCallback((i) => {
         return (j) => {
             dispatch({ type: 'PLAY', payload: { i, j } });
+            socketRef.current.emit('makeMove', {
+                roomCode,
+                move: { i, j }
+            });
         };
-    }, []);
+    }, [roomCode]);
 
     function reset() {
-        dispatch({
-            type: 'RESET'
-        });
+        dispatch({ type: 'RESET' });
+        socketRef.current.emit('resetGame', { roomCode });
     }
 
     useEffect(() => {
@@ -51,6 +56,11 @@ export default function HostGame() {
             setIsGameStart(true);
         });
 
+        // 监听对手落子
+        socket.on('moveMade', ({ move }) => {
+            dispatch({ type: 'PLAY', payload: move });
+        });
+
         // 清理函数
         return () => {
             socket.disconnect();
@@ -65,13 +75,14 @@ export default function HostGame() {
                 onPlay={handlePlay}
                 subResults={subResults}
                 isGameOver={result !== null}
-                isWaiting={false}
+                isWaiting={nextPiece !== myPiece}
             />
             <InfoBox
                 result={result}
                 nextPiece={nextPiece}
                 targetIndex={targetIndex}
                 reset={reset}
+                myPiece={myPiece}
             />
         </div>
     ) : (
@@ -87,21 +98,20 @@ export default function HostGame() {
     );
 }
 
-function InfoBox({ result, nextPiece, targetIndex, reset }) {
+function InfoBox({ result, nextPiece, targetIndex, reset, myPiece }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
+    const myPieceElement = myPiece === 'X' ? XElement : OElement;
 
-    const currentPieceElement = result ?
-        (result === 'X' ? XElement : OElement) :
-        (nextPiece === 'X' ? XElement : OElement);
+    const stateText = result ?
+        (result === 'T' ? '平局!' : (result === myPiece ? '你赢了!' : '你输了!')) :
+        (myPiece === nextPiece ? "我方回合" : "对手回合");
 
-    const titleContent = result ? (
-        result === 'T' ? (<span>平局!</span>) : (<> {currentPieceElement} <span>方获胜!</span> </>)
-    ) : (
-        <> {currentPieceElement} <span>方落子</span> </>
-    );
+    const titleContent = <>你是 {myPieceElement} - {stateText}</>;
 
-    const hintText = targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子";
+    const hintText = myPiece === nextPiece ?
+        (targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子") :
+        "请等待你的对手落子";
 
     return (
         <aside className={styles['info-box']}>
@@ -130,9 +140,10 @@ function gameReducer(state, action) {
         }
         case 'RESET': {
             return {
+                ...state,
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
-                nextPiece: 'X'
+                nextPiece: 'X',
             }
         }
         default:

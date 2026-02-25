@@ -15,7 +15,7 @@ const io = new Server(httpServer, {
   }
 });
 
-// 房间存储，格式：{ roomCode: { players: [socketId1, socketId2], ready: false } }
+// 房间存储，格式：roomCode -> { players: [socketId1, socketId2], ready: false }
 const rooms = new Map();
 
 // 生成随机房间码
@@ -93,21 +93,16 @@ io.on('connection', (socket) => {
   socket.on('makeMove', ({ roomCode, move }) => {
     if (!rooms.has(roomCode)) return;
 
-    const room = rooms.get(roomCode);
-    if (!room.ready) return;
-
-    // 转发给房间内其他玩家
     socket.to(roomCode).emit('moveMade', { move });
     console.log(`Move made in room ${roomCode}:`, move);
   });
 
-  // 转发游戏结束消息
-  socket.on('gameOver', ({ roomCode, result }) => {
+  // 转发重置游戏
+  socket.on('resetGame', ({ roomCode }) => {
+    console.log(`Game reset in room ${roomCode}`);
     if (!rooms.has(roomCode)) return;
 
-    // 转发给房间内其他玩家
-    socket.to(roomCode).emit('gameOver', { result });
-    console.log(`Game over in room ${roomCode}:`, result);
+    socket.to(roomCode).emit('gameReset');
   });
 
   // 处理断开连接

@@ -99,11 +99,15 @@ function OptionView() {
                     </div>
                 </section>
                 <section className={roomSecClassName}>
-                    <div className={`${styles['opt']} ${styles['room-opt']}`}>
+                    <div className={`${styles['opt']} ${styles['room-opt']}`}
+                        onClick={() => navigate('/host-game')}
+                    >
                         <h2>创建游戏</h2>
                         <p>创建一个新游戏并让你的朋友加入</p>
                     </div>
-                    <div className={`${styles['opt']} ${styles['room-opt']}`}>
+                    <div className={`${styles['opt']} ${styles['room-opt']}`}
+                        onClick={() => navigate('/guest-game')}
+                    >
                         <h2>加入游戏</h2>
                         <p>加入你的朋友创建的一个游戏</p>
                     </div>

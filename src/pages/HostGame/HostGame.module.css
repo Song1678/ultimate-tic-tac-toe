@@ -14,7 +14,7 @@
 }
 
 .info-box {
-    width: 280px;
+    width: 30vw;
     vertical-align: top;
     text-align: center;
     margin-bottom: 20px;
@@ -39,5 +39,9 @@
 
     .container {
         padding: 0;
+    }
+
+    .info-box {
+        width: 100vw;
     }
 }

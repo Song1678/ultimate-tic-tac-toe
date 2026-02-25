@@ -3,21 +3,22 @@ import { io } from 'socket.io-client';
 import styles from './GuestGame.module.css';
 import { checkResult } from '@/utils/boardHelper.js';
 import Board from '@/components/Board/Board.jsx';
-import BackBtn from '@/components/Buttons/BackBtn.jsx'
+import BackBtn from '@/components/Buttons/BackBtn.jsx';
 
-
+const serverUrl = 'http://localhost:3001';  // 部署时需要修改为实际服务器地址
 
 export default function GuestGame() {
-    const socketRef = useRef(null); // 使用 useRef 存储 socket 实例
+    const socketRef = useRef(null);
     const [roomCode, setRoomCode] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const [isGameStart, setIsGameStart] = useState(false);
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
-        nextPiece: 'X'
+        nextPiece: 'X',
+        myPiece: 'O'        //我方执有的棋子,默认为O
     });
-    const { board, targetIndex, nextPiece } = gameState;
+    const { board, targetIndex, nextPiece, myPiece } = gameState;
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
@@ -25,18 +26,27 @@ export default function GuestGame() {
     const handlePlay = useCallback((i) => {
         return (j) => {
             dispatch({ type: 'PLAY', payload: { i, j } });
+            socketRef.current.emit('makeMove', {
+                roomCode,
+                move: { i, j }
+            });
         };
-    }, []);
+    }, [roomCode]);
 
     function reset() {
-        dispatch({
-            type: 'RESET'
-        });
+        dispatch({ type: 'RESET' });
+        socketRef.current.emit('resetGame', { roomCode });
     }
+
+    function handleJoinRoom() {
+        setIsJoining(true);
+        socketRef.current.emit('joinRoom', { roomCode });
+    };
+
 
     useEffect(() => {
         // 连接到后端服务器
-        const socket = io('http://localhost:3001'); // 部署时需要修改为实际服务器地址
+        const socket = io(serverUrl);
         socketRef.current = socket; // 存储到 ref 中，不会触发重新渲染
 
         // 监听加入成功
@@ -49,9 +59,21 @@ export default function GuestGame() {
             setIsGameStart(true);
         });
 
-        // 监听错误
-        socket.on("joinError", (data) => {
+        // 监听加入房间错误
+        socket.on("joinError", () => {
             setIsJoining(false);
+        });
+
+        // 监听对手落子
+        socket.on('moveMade', ({ move }) => {
+            console.log("Guest监听到对方落子:", move);
+            dispatch({ type: 'PLAY', payload: move });
+        });
+
+        // 监听游戏重置
+        socket.on('gameReset', () => {
+            console.log("Guest监听到游戏重置");
+            reset();
         });
 
         // 清理函数
@@ -59,11 +81,6 @@ export default function GuestGame() {
             socket.disconnect();
         };
     }, []);
-
-    function handleJoinRoom() {
-        setIsJoining(true);
-        socketRef.current.emit('joinRoom', { roomCode });
-    };
 
     const mainContent = isGameStart ? (
         <div className={styles['game-wrap']}>
@@ -73,13 +90,13 @@ export default function GuestGame() {
                 onPlay={handlePlay}
                 subResults={subResults}
                 isGameOver={result !== null}
-                isWaiting={false}
+                isWaiting={nextPiece !== myPiece}
             />
             <InfoBox
                 result={result}
                 nextPiece={nextPiece}
                 targetIndex={targetIndex}
-                reset={reset}
+                myPiece={myPiece}
             />
         </div>
     ) : (
@@ -106,27 +123,25 @@ export default function GuestGame() {
     );
 }
 
-function InfoBox({ result, nextPiece, targetIndex, reset }) {
+function InfoBox({ result, nextPiece, targetIndex, myPiece }) {
     const XElement = <span style={{ color: '#c0392b' }}>X</span>;
     const OElement = <span style={{ color: '#16a085' }}>O</span>;
+    const myPieceElement = myPiece === 'X' ? XElement : OElement;
 
-    const currentPieceElement = result ?
-        (result === 'X' ? XElement : OElement) :
-        (nextPiece === 'X' ? XElement : OElement);
+    const stateText = result ?
+        (result === 'T' ? '平局!' : (result === myPiece ? '你赢了!' : '你输了!')) :
+        (myPiece === nextPiece ? "我方回合" : "对手回合");
 
-    const titleContent = result ? (
-        result === 'T' ? (<span>平局!</span>) : (<> {currentPieceElement} <span>方获胜!</span> </>)
-    ) : (
-        <> {currentPieceElement} <span>方落子</span> </>
-    );
+    const titleContent = <>你是 {myPieceElement} - {stateText}</>;
 
-    const hintText = targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子";
+    const hintText = myPiece === nextPiece ?
+        (targetIndex !== -1 ? "请在指定区域落子" : "请在任意区域落子") :
+        "请等待你的对手落子";
 
     return (
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
             {!result && <p>{hintText}</p>}
-            {result && <ResetBtn callback={reset} />}
         </aside>
     );
 }
@@ -149,6 +164,7 @@ function gameReducer(state, action) {
         }
         case 'RESET': {
             return {
+                ...state,
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
                 nextPiece: 'X'
