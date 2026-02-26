@@ -32,7 +32,7 @@ function generateRoomCode() {
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
 
-  // 创建房间
+  // host创建房间
   socket.on('createRoom', () => {
     let roomCode;
     do {
@@ -50,7 +50,7 @@ io.on('connection', (socket) => {
     console.log(`Room created: ${roomCode} by ${socket.id}`);
   });
 
-  // 加入房间
+  // guest加入房间
   socket.on('joinRoom', ({ roomCode }) => {
     if (!rooms.has(roomCode)) {
       socket.emit('joinError', { message: 'Room not found' });
@@ -63,7 +63,6 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // 加入房间
     room.players.push(socket.id);
     socket.join(roomCode);
 
@@ -83,6 +82,27 @@ io.on('connection', (socket) => {
     });
 
     console.log(`Player ${socket.id} joined room ${roomCode}`);
+  });
+
+  // 重连房间
+  socket.on('rejoinRoom', ({ roomCode }) => {
+    if (!rooms.has(roomCode)) {
+      // 房间已不存在（服务器重启了），让 Host 重新创建
+      socket.emit('roomExpired');
+      return;
+    }
+
+    const room = rooms.get(roomCode);
+    // 更新 Host 的 socket.id
+    room.players[0] = socket.id;
+    socket.join(roomCode);
+
+    socket.emit('roomCreated', { roomCode }); // 重新确认房间号
+
+    // 如果 Guest 已经在等待，补发 gameStart
+    if (room.ready) {
+      socket.emit('gameStart');
+    }
   });
 
   // 转发落子消息

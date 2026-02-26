@@ -14,11 +14,12 @@ export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
     const [isGameStart, setIsGameStart] = useState(false);
     const socketRef = useRef(null);
+    const roomCodeRef = useRef(null);   // 用ref防止初始化useEffect里的闭包
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
-        myPiece: 'X'            //我方执有的棋子，默认为X
+        myPiece: 'X'            // 我方执有的棋子，默认为X
     });
     const { board, targetIndex, nextPiece, myPiece } = gameState;
     const subResults = useMemo(() =>
@@ -43,14 +44,28 @@ export default function HostGame() {
     useEffect(() => {
         // 连接到后端服务器
         const socket = io(serverUrl);
-        socketRef.current = socket; // 存储到 ref 中
+        socketRef.current = socket;
 
-        // 创建房间
-        socket.emit('createRoom');
+        // 连接/重连时触发（connect 在初连和重连都会触发）
+        socket.on('connect', () => {
+            if (roomCodeRef.current) {
+                // 重连：重新加入已有房间
+                socket.emit('rejoinRoom', { roomCode: roomCodeRef.current });
+            } else {
+                // 初次连接：创建新房间
+                socket.emit('createRoom');
+            }
+        });
 
         // 监听房间创建成功
         socket.on('roomCreated', (data) => {
             setRoomCode(data.roomCode);
+            roomCodeRef.current = data.roomCode;    // 同时更新ref
+        });
+
+        // 监听房间过期
+        socket.on('roomExpired', () => {
+            socket.emit('createRoom');  // 房间没了（服务器重启），重新创建
         });
 
         // 监听游戏开始

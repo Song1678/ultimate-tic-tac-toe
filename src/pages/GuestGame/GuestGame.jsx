@@ -61,6 +61,7 @@ export default function GuestGame() {
 
         // 监听游戏开始
         socket.on('gameStart', () => {
+            reset();
             setIsGameStart(true);
         });
 
