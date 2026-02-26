@@ -12,6 +12,7 @@ export default function GuestGame() {
     const socketRef = useRef(null);
     const [roomCode, setRoomCode] = useState('');
     const [isJoining, setIsJoining] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
     const [isGameStart, setIsGameStart] = useState(false);
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
@@ -36,10 +37,13 @@ export default function GuestGame() {
 
     function reset() {
         dispatch({ type: 'RESET' });
-        socketRef.current.emit('resetGame', { roomCode });
     }
 
     function handleJoinRoom() {
+        if (roomCode.trim().length !== 5) {
+            setErrorMsg("请输入5位字符的房间号");
+            return;
+        }
         setIsJoining(true);
         socketRef.current.emit('joinRoom', { roomCode });
     };
@@ -61,7 +65,8 @@ export default function GuestGame() {
         });
 
         // 监听加入房间错误
-        socket.on("joinError", () => {
+        socket.on("joinError", ({ message }) => {
+            setErrorMsg(message);
             setIsJoining(false);
         });
 
@@ -103,15 +108,22 @@ export default function GuestGame() {
     ) : (
         <>
             <label>请输入房间号：</label>
-            <input
-                type="text"
-                value={roomCode}
-                onChange={(e) => setRoomCode(e.target.value)}
-                disabled={isJoining}
-                maxLength="5"
-                placeholder="xxxxx"
-            />
-            <button onClick={handleJoinRoom} disabled={isJoining}>连接</button>
+            <span>
+                <input
+                    type="text"
+                    value={roomCode}
+                    onChange={(e) => setRoomCode(e.target.value)}
+                    disabled={isJoining}
+                    maxLength="5"
+                    placeholder="xxxxx"
+                    size="12"
+                />
+                <button onClick={handleJoinRoom} disabled={isJoining}>连接</button>
+            </span>
+
+            <p>不知道这是什么？问问你创建房间的朋友，他们会知道的</p>
+
+            <p className={styles['error-msg']}>{errorMsg}</p>
         </>
     )
 

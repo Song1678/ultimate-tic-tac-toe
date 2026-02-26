@@ -31,6 +31,10 @@
     justify-content: center;
 }
 
+.error-msg {
+    color: red;
+}
+
 @media (max-aspect-ratio: 12 / 9) {
     .game-wrap {
         flex-direction: column-reverse;

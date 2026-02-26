@@ -55,6 +55,7 @@ export default function HostGame() {
 
         // 监听游戏开始
         socket.on('gameStart', () => {
+            console.log("游戏开始");
             setIsGameStart(true);
         });
 
@@ -88,7 +89,10 @@ export default function HostGame() {
             />
         </div>
     ) : (
-        <p>房间号：{roomCode ?? "加载中..."}</p>
+        <>
+            <p>房间号：{roomCode ?? "加载中..."}</p>
+            {roomCode && <p>{"请将该房间号告诉你的朋友"}</p>}
+        </>
     )
 
     return (

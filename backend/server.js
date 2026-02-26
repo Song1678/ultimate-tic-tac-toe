@@ -4,8 +4,9 @@ import { Server } from 'socket.io';
 // import cors from 'cors';
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
+const server = createServer(app);
+const io = new Server(server, {
+  connectionStateRecovery: {},
   cors: {
     origin: [
       'https://song1678.github.io',
@@ -15,7 +16,6 @@ const io = new Server(httpServer, {
   }
 });
 
-// 房间存储，格式：roomCode -> { players: [socketId1, socketId2], ready: false }
 const rooms = new Map();
 
 // 生成随机房间码
@@ -35,21 +35,17 @@ io.on('connection', (socket) => {
   // 创建房间
   socket.on('createRoom', () => {
     let roomCode;
-    // 确保生成唯一的房间码
     do {
       roomCode = generateRoomCode();
     } while (rooms.has(roomCode));
 
-    // 创建新房间
     rooms.set(roomCode, {
       players: [socket.id],
       ready: false
     });
 
-    // 加入房间
     socket.join(roomCode);
 
-    // 发送房间码给房主
     socket.emit('roomCreated', { roomCode });
     console.log(`Room created: ${roomCode} by ${socket.id}`);
   });
@@ -137,6 +133,6 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
