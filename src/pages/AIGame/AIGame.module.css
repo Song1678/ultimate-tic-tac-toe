@@ -102,5 +102,7 @@
         display: none;
     }
 
-    
+    .info-box {
+        width: 100vw;
+    }
 }

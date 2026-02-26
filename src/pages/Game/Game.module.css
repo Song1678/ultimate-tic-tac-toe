@@ -40,4 +40,8 @@
     .container {
         padding: 0;
     }
+
+    .info-box {
+        width: 100vw;
+    }
 }

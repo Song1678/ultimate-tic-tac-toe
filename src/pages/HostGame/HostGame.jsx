@@ -6,7 +6,9 @@ import Board from '@/components/Board/Board.jsx';
 import BackBtn from '@/components/Buttons/BackBtn.jsx';
 import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
 
-const serverUrl = 'http://localhost:3001';  // 部署时需要修改为实际服务器地址
+// const serverUrl = 'http://localhost:3001';
+const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
+
 
 export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
