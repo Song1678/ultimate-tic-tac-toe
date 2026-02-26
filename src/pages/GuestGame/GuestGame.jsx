@@ -10,6 +10,7 @@ const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
 
 export default function GuestGame() {
     const socketRef = useRef(null);
+    const roomCodeRef = useRef(null);   // 用ref防止初始化useEffect里的闭包
     const [roomCode, setRoomCode] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -18,7 +19,7 @@ export default function GuestGame() {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
-        myPiece: 'O'        //我方执有的棋子,默认为O
+        myPiece: 'O'        // 我方执有的棋子，默认为O
     });
     const { board, targetIndex, nextPiece, myPiece } = gameState;
     const subResults = useMemo(() =>
@@ -29,57 +30,75 @@ export default function GuestGame() {
         return (j) => {
             dispatch({ type: 'PLAY', payload: { i, j } });
             socketRef.current.emit('makeMove', {
-                roomCode,
+                roomCode: roomCodeRef.current,  // 用ref保证始终是最新值
                 move: { i, j }
             });
         };
-    }, [roomCode]);
+    }, []);
 
     function reset() {
         dispatch({ type: 'RESET' });
     }
 
     function handleJoinRoom() {
-        if (roomCode.trim().length !== 5) {
+        const code = roomCode.trim().toLowerCase();
+        if (code.length !== 5) {
             setErrorMsg("请输入5位字符的房间号");
             return;
         }
         setIsJoining(true);
-        socketRef.current.emit('joinRoom', { roomCode });
-    };
-
+        setErrorMsg('');
+        socketRef.current.emit('joinRoom', { roomCode: code });
+    }
 
     useEffect(() => {
         // 连接到后端服务器
         const socket = io(serverUrl);
-        socketRef.current = socket; // 存储到 ref 中，不会触发重新渲染
+        socketRef.current = socket;
+
+        // 连接/重连时触发（connect 在初连和重连都会触发）
+        socket.on('connect', () => {
+            if (roomCodeRef.current) {
+                // 重连：重新加入已有房间
+                socket.emit('rejoinRoom', { roomCode: roomCodeRef.current, role: 'guest' });
+            }
+            // 未加入房间时不做任何事，等待用户输入
+        });
 
         // 监听加入成功
-        socket.on('roomJoined', () => {
+        socket.on('roomJoined', (data) => {
             setIsJoining(false);
+            roomCodeRef.current = data.roomCode;    // 存储规范化的小写房间号
+            setRoomCode(data.roomCode);
         });
 
         // 监听游戏开始
         socket.on('gameStart', () => {
-            reset();
             setIsGameStart(true);
         });
 
+        // 监听房间过期（重连时房间已消失）
+        socket.on('roomExpired', () => {
+            roomCodeRef.current = null;
+            setErrorMsg("房间已失效，请重新输入房间号");
+            setIsGameStart(false);
+            setRoomCode('');
+            reset();
+        });
+
         // 监听加入房间错误
-        socket.on("joinError", ({ message }) => {
+        socket.on('joinError', ({ message }) => {
             setErrorMsg(message);
             setIsJoining(false);
         });
 
         // 监听对手落子
         socket.on('moveMade', ({ move }) => {
-            console.log("Guest监听到对方落子:", move);
             dispatch({ type: 'PLAY', payload: move });
         });
 
         // 监听游戏重置
         socket.on('gameReset', () => {
-            console.log("Guest监听到游戏重置");
             reset();
         });
 

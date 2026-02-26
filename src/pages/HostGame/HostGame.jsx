@@ -9,12 +9,12 @@ import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
 // const serverUrl = 'http://localhost:3001';
 const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
 
-
 export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
     const [isGameStart, setIsGameStart] = useState(false);
     const socketRef = useRef(null);
     const roomCodeRef = useRef(null);   // 用ref防止初始化useEffect里的闭包
+
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
@@ -50,7 +50,7 @@ export default function HostGame() {
         socket.on('connect', () => {
             if (roomCodeRef.current) {
                 // 重连：重新加入已有房间
-                socket.emit('rejoinRoom', { roomCode: roomCodeRef.current });
+                socket.emit('rejoinRoom', { roomCode: roomCodeRef.current, role: 'host' });
             } else {
                 // 初次连接：创建新房间
                 socket.emit('createRoom');
@@ -65,18 +65,17 @@ export default function HostGame() {
 
         // 监听房间过期
         socket.on('roomExpired', () => {
+            roomCodeRef.current = null;
             socket.emit('createRoom');  // 房间没了（服务器重启），重新创建
         });
 
         // 监听游戏开始
         socket.on('gameStart', () => {
-            console.log("游戏开始");
             setIsGameStart(true);
         });
 
         // 监听对手落子
         socket.on('moveMade', ({ move }) => {
-            console.log("Host监听到对方落子:", move);
             dispatch({ type: 'PLAY', payload: move });
         });
 

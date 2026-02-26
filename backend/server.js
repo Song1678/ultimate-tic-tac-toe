@@ -40,68 +40,73 @@ io.on('connection', (socket) => {
     } while (rooms.has(roomCode));
 
     rooms.set(roomCode, {
-      players: [socket.id],
+      hostId: socket.id,
+      guestId: null,
       ready: false
     });
 
     socket.join(roomCode);
-
     socket.emit('roomCreated', { roomCode });
     console.log(`Room created: ${roomCode} by ${socket.id}`);
   });
 
   // guest加入房间
   socket.on('joinRoom', ({ roomCode }) => {
+    console.log("guest request joining room: ", roomCode);
     if (!rooms.has(roomCode)) {
       socket.emit('joinError', { message: 'Room not found' });
       return;
     }
 
     const room = rooms.get(roomCode);
-    if (room.players.length >= 2) {
+    if (room.guestId !== null) {
       socket.emit('joinError', { message: 'Room is full' });
       return;
     }
 
-    room.players.push(socket.id);
+    room.guestId = socket.id;
     socket.join(roomCode);
 
     // 发送加入成功消息
     socket.emit('roomJoined', { roomCode });
 
     // 通知房主有玩家加入
-    io.to(room.players[0]).emit('playerJoined');
+    io.to(room.hostId).emit('playerJoined');
 
     // 标记房间为准备就绪
     room.ready = true;
 
     // 通知所有房间内的玩家游戏开始
     io.to(roomCode).emit('gameStart', {
-      player1: room.players[0],
+      player1: room.hostId,
       player2: socket.id
     });
 
     console.log(`Player ${socket.id} joined room ${roomCode}`);
   });
 
-  // 重连房间
-  socket.on('rejoinRoom', ({ roomCode }) => {
+  // 重连房间（host 和 guest 通用）
+  socket.on('rejoinRoom', ({ roomCode, role }) => {
     if (!rooms.has(roomCode)) {
-      // 房间已不存在（服务器重启了），让 Host 重新创建
       socket.emit('roomExpired');
       return;
     }
 
     const room = rooms.get(roomCode);
-    // 更新 Host 的 socket.id
-    room.players[0] = socket.id;
     socket.join(roomCode);
 
-    socket.emit('roomCreated', { roomCode }); // 重新确认房间号
-
-    // 如果 Guest 已经在等待，补发 gameStart
-    if (room.ready) {
-      socket.emit('gameStart');
+    if (role === 'guest') {
+      room.guestId = socket.id;
+      if (room.ready) {
+        socket.emit('gameStart');
+      }
+    } else {
+      // host（默认）
+      room.hostId = socket.id;
+      socket.emit('roomCreated', { roomCode }); // 重新确认房间号
+      if (room.ready) {
+        socket.emit('gameStart');
+      }
     }
   });
 
@@ -125,21 +130,29 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Disconnected:', socket.id);
 
-    // 检查并清理包含此玩家的房间
     for (const [roomCode, room] of rooms.entries()) {
-      const playerIndex = room.players.indexOf(socket.id);
-      if (playerIndex !== -1) {
-        // 从房间中移除玩家
-        room.players.splice(playerIndex, 1);
-
-        if (room.players.length === 0) {
-          // 房间为空，删除房间
+      if (socket.id === room.hostId) {
+        room.hostId = null;
+        if (room.guestId === null) {
+          // 房间已空，删除
           rooms.delete(roomCode);
           console.log(`Room deleted: ${roomCode}`);
         } else {
-          // 通知房间内其他玩家
-          io.to(room.players[0]).emit('playerLeft');
-          console.log(`Player left room ${roomCode}, remaining players: ${room.players.length}`);
+          // 通知 guest
+          io.to(room.guestId).emit('playerLeft');
+          console.log(`Host left room ${roomCode}`);
+        }
+        break;
+      } else if (socket.id === room.guestId) {
+        room.guestId = null;
+        if (room.hostId === null) {
+          // 房间已空，删除
+          rooms.delete(roomCode);
+          console.log(`Room deleted: ${roomCode}`);
+        } else {
+          // 通知 host
+          io.to(room.hostId).emit('playerLeft');
+          console.log(`Guest left room ${roomCode}`);
         }
         break;
       }
