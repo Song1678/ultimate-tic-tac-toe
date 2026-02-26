@@ -61,6 +61,7 @@ export default function HostGame() {
 
         // 监听对手落子
         socket.on('moveMade', ({ move }) => {
+            console.log("Host监听到对方落子:", move);
             dispatch({ type: 'PLAY', payload: move });
         });
 
