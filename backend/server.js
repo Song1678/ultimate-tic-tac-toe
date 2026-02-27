@@ -5,6 +5,9 @@ import { Server } from 'socket.io';
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 3 * 60 * 1000, // 3 分钟内可恢复
+  },
   cors: {
     origin: [
       'https://song1678.github.io',
@@ -15,11 +18,10 @@ const io = new Server(server, {
 });
 
 const rooms = new Map();
-const roomTimers = new Map(); // 延迟删除定时器
+const roomTimers = new Map();
 
-const ROOM_EXPIRY_MS = 3 * 60 * 1000; // 3 分钟
+const ROOM_EXPIRY_MS = 3 * 60 * 1000;
 
-// 生成随机房间码
 function generateRoomCode() {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let code = '';
@@ -29,7 +31,6 @@ function generateRoomCode() {
   return code;
 }
 
-// 延迟删除房间（给 host 重连留出时间）
 function scheduleRoomDeletion(roomCode) {
   const timer = setTimeout(() => {
     rooms.delete(roomCode);
@@ -39,7 +40,6 @@ function scheduleRoomDeletion(roomCode) {
   roomTimers.set(roomCode, timer);
 }
 
-// 取消延迟删除（host 已重连）
 function cancelRoomDeletion(roomCode) {
   if (roomTimers.has(roomCode)) {
     clearTimeout(roomTimers.get(roomCode));
@@ -47,9 +47,20 @@ function cancelRoomDeletion(roomCode) {
   }
 }
 
-// 处理新连接
+function initialGameState() {
+  return {
+    board: Array.from({ length: 9 }, () => Array(9).fill(null)),
+    targetIndex: -1,
+    nextPiece: 'X',
+  };
+}
+
 io.on('connection', (socket) => {
-  console.log('New connection:', socket.id);
+  const recovered = socket.recovered;
+  console.log(`Connection: ${socket.id}, recovered: ${recovered}`);
+
+  // 如果恢复成功，socket.id 不变，房间关系保留，无需做任何事
+  // 如果恢复失败，则是全新连接，由客户端主动发起 createRoom / joinRoom
 
   // host 创建房间
   socket.on('createRoom', () => {
@@ -61,7 +72,8 @@ io.on('connection', (socket) => {
     rooms.set(roomCode, {
       hostId: socket.id,
       guestId: null,
-      ready: false
+      ready: false,
+      gameState: initialGameState(),
     });
 
     socket.join(roomCode);
@@ -77,7 +89,6 @@ io.on('connection', (socket) => {
     }
 
     const room = rooms.get(roomCode);
-    // room.ready 表示游戏已开始（含 guest 断线后未重连的情况），一律拒绝新 guest 混入
     if (room.guestId !== null || room.ready) {
       socket.emit('joinError', { message: 'Room is full' });
       return;
@@ -85,25 +96,23 @@ io.on('connection', (socket) => {
 
     room.guestId = socket.id;
     socket.join(roomCode);
-
     socket.emit('roomJoined', { roomCode });
 
-    // 若 host 当前在线才通知，host 断线期间通知无意义
     if (room.hostId) {
       io.to(room.hostId).emit('playerJoined');
     }
 
-    // Guest 已加入，不应再删除房间（Host 可能还在重连途中）
     cancelRoomDeletion(roomCode);
 
     room.ready = true;
-    io.to(roomCode).emit('gameStart');
+    room.gameState = initialGameState();
+    io.to(roomCode).emit('gameStart', { gameState: room.gameState });
 
     console.log(`Player ${socket.id} joined room ${roomCode}`);
   });
 
-  // 重连房间（host 和 guest 通用）
-  socket.on('rejoinRoom', ({ roomCode, role }) => {
+  // 客户端恢复失败后请求同步游戏状态
+  socket.on('requestSync', ({ roomCode, role }) => {
     if (!rooms.has(roomCode)) {
       socket.emit('roomExpired');
       return;
@@ -112,38 +121,51 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     socket.join(roomCode);
 
-    if (role === 'guest') {
-      room.guestId = socket.id;
-      room.ready = true; // 恢复 ready 状态，确保 gameStart 能补发
-      socket.emit('gameStart');
-    } else {
-      // host
+    if (role === 'host') {
       room.hostId = socket.id;
-      cancelRoomDeletion(roomCode); // 取消延迟删除
-      socket.emit('roomCreated', { roomCode }); // 确认房间号（同原房间号）
-      if (room.ready) {
-        socket.emit('gameStart');
-      }
+      cancelRoomDeletion(roomCode);
+    } else {
+      room.guestId = socket.id;
+    }
+
+    if (room.ready) {
+      socket.emit('gameSync', { gameState: room.gameState });
+    } else {
+      // 游戏尚未开始，告知客户端当前房间号
+      socket.emit('roomCreated', { roomCode });
     }
   });
 
-  // 转发落子消息
+  // 转发落子消息，同时更新服务端状态
   socket.on('makeMove', ({ roomCode, move }) => {
     if (!rooms.has(roomCode)) return;
 
+    const room = rooms.get(roomCode);
+    const { i, j } = move;
+    const gs = room.gameState;
+
+    // 更新服务端棋盘
+    gs.board[i][j] = gs.nextPiece;
+    gs.nextPiece = gs.nextPiece === 'X' ? 'O' : 'X';
+    // 计算 targetIndex（简化版：检查目标子棋盘是否已满或已决出）
+    gs.targetIndex = isBoardResolved(gs.board[j]) ? -1 : j;
+
     socket.to(roomCode).emit('moveMade', { move });
-    console.log(`Move made in room ${roomCode}:`, move);
+    console.log(`Move in ${roomCode}:`, move);
   });
 
-  // 转发重置游戏
+  // 重置游戏
   socket.on('resetGame', ({ roomCode }) => {
-    console.log(`Game reset in room ${roomCode}`);
     if (!rooms.has(roomCode)) return;
 
+    const room = rooms.get(roomCode);
+    room.gameState = initialGameState();
+
     socket.to(roomCode).emit('gameReset');
+    console.log(`Game reset in ${roomCode}`);
   });
 
-  // 处理断开连接
+  // 断开连接
   socket.on('disconnect', () => {
     console.log('Disconnected:', socket.id);
 
@@ -151,30 +173,46 @@ io.on('connection', (socket) => {
       if (socket.id === room.hostId) {
         room.hostId = null;
         if (room.guestId === null) {
-          // 无 guest：延迟删除，给 host 重连留出时间，房间号继续有效
           scheduleRoomDeletion(roomCode);
-          console.log(`Host left room ${roomCode}, scheduled for deletion in ${ROOM_EXPIRY_MS / 1000}s`);
         } else {
           io.to(room.guestId).emit('playerLeft');
-          console.log(`Host left room ${roomCode}`);
         }
         break;
       } else if (socket.id === room.guestId) {
         room.guestId = null;
-        // 不重置 room.ready：防止其他人混入，且支持原 guest 重连后继续游戏
         if (room.hostId === null) {
           cancelRoomDeletion(roomCode);
           rooms.delete(roomCode);
-          console.log(`Room deleted: ${roomCode}`);
         } else {
           io.to(room.hostId).emit('playerLeft');
-          console.log(`Guest left room ${roomCode}`);
         }
         break;
       }
     }
   });
 });
+
+// ---- 服务端棋盘判定工具 ----
+
+const LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6]
+];
+
+function checkResult(cells) {
+  for (const [a, b, c] of LINES) {
+    if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) {
+      return cells[a];
+    }
+  }
+  if (cells.every(c => c !== null)) return 'T';
+  return null;
+}
+
+function isBoardResolved(cells) {
+  return checkResult(cells) !== null;
+}
 
 // 健康检查
 app.get('/', (req, res) => {

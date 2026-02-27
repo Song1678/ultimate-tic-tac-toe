@@ -13,13 +13,13 @@ export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
     const [isGameStart, setIsGameStart] = useState(false);
     const socketRef = useRef(null);
-    const roomCodeRef = useRef(null);   // 用ref防止初始化useEffect里的闭包
+    const roomCodeRef = useRef(null);
 
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
-        myPiece: 'X'            // 我方执有的棋子，默认为X
+        myPiece: 'X'
     });
     const { board, targetIndex, nextPiece, myPiece } = gameState;
     const subResults = useMemo(() =>
@@ -30,56 +30,68 @@ export default function HostGame() {
         return (j) => {
             dispatch({ type: 'PLAY', payload: { i, j } });
             socketRef.current.emit('makeMove', {
-                roomCode,
+                roomCode: roomCodeRef.current,
                 move: { i, j }
             });
         };
-    }, [roomCode]);
+    }, []);
 
     function reset() {
         dispatch({ type: 'RESET' });
-        socketRef.current.emit('resetGame', { roomCode });
+        socketRef.current.emit('resetGame', { roomCode: roomCodeRef.current });
     }
 
     useEffect(() => {
-        // 连接到后端服务器
         const socket = io(serverUrl);
         socketRef.current = socket;
 
-        // 连接/重连时触发（connect 在初连和重连都会触发）
         socket.on('connect', () => {
+            if (socket.recovered) {
+                // 连接恢复成功：socket.id 不变，房间关系保留，无需任何操作
+                console.log('Connection recovered successfully');
+                return;
+            }
+
+            // 恢复失败或首次连接
             if (roomCodeRef.current) {
-                // 重连：重新加入已有房间
-                socket.emit('rejoinRoom', { roomCode: roomCodeRef.current, role: 'host' });
+                // 之前有房间，请求同步
+                socket.emit('requestSync', { roomCode: roomCodeRef.current, role: 'host' });
             } else {
-                // 初次连接：创建新房间
+                // 首次连接，创建房间
                 socket.emit('createRoom');
             }
         });
 
-        // 监听房间创建成功
+        // 房间创建成功（首次创建 或 requestSync 时游戏尚未开始）
         socket.on('roomCreated', (data) => {
             setRoomCode(data.roomCode);
-            roomCodeRef.current = data.roomCode;    // 同时更新ref
+            roomCodeRef.current = data.roomCode;
         });
 
-        // 监听房间过期
+        // 房间过期（requestSync 时房间已不存在）
         socket.on('roomExpired', () => {
             roomCodeRef.current = null;
-            socket.emit('createRoom');  // 房间没了（服务器重启），重新创建
+            setIsGameStart(false);
+            socket.emit('createRoom');
         });
 
-        // 监听游戏开始
-        socket.on('gameStart', () => {
+        // 游戏开始（guest 加入时触发）
+        socket.on('gameStart', ({ gameState: gs }) => {
+            dispatch({ type: 'SYNC', payload: gs });
             setIsGameStart(true);
         });
 
-        // 监听对手落子
+        // 恢复失败后的状态同步
+        socket.on('gameSync', ({ gameState: gs }) => {
+            dispatch({ type: 'SYNC', payload: gs });
+            setIsGameStart(true);
+        });
+
+        // 对手落子
         socket.on('moveMade', ({ move }) => {
             dispatch({ type: 'PLAY', payload: move });
         });
 
-        // 清理函数
         return () => {
             socket.disconnect();
         };
@@ -111,7 +123,7 @@ export default function HostGame() {
             <p>{"请将该房间号告诉你的好友,游戏将在你的好友加入该房间后自动开始"}</p>
             <p>请<strong>不要</strong>离开或刷新该页面，否则该房间号会过期</p>
         </div>
-    )
+    );
 
     return (
         <div className={styles.container}>
@@ -162,13 +174,22 @@ function gameReducer(state, action) {
                 nextPiece: newNextPiece
             };
         }
+        case 'SYNC': {
+            const { board, targetIndex, nextPiece } = action.payload;
+            return {
+                ...state,
+                board,
+                targetIndex,
+                nextPiece
+            };
+        }
         case 'RESET': {
             return {
                 ...state,
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
                 nextPiece: 'X',
-            }
+            };
         }
         default:
             return state;
