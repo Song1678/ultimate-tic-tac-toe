@@ -28,17 +28,12 @@ export default function GuestGame() {
 
     const handlePlay = useCallback((i) => {
         return (j) => {
-            dispatch({ type: 'PLAY', payload: { i, j } });
             socketRef.current.emit('makeMove', {
                 roomCode: roomCodeRef.current,
                 move: { i, j }
             });
         };
     }, []);
-
-    function reset() {
-        dispatch({ type: 'RESET' });
-    }
 
     function handleJoinRoom() {
         const code = roomCode.trim().toLowerCase();
@@ -94,7 +89,7 @@ export default function GuestGame() {
             setErrorMsg("房间已失效，请重新输入房间号");
             setIsGameStart(false);
             setRoomCode('');
-            reset();
+            dispatch({ type: 'RESET' });
         });
 
         // 加入房间错误
@@ -110,7 +105,7 @@ export default function GuestGame() {
 
         // 游戏重置
         socket.on('gameReset', () => {
-            reset();
+            dispatch({ type: 'RESET' });
         });
 
         return () => {

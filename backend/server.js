@@ -150,7 +150,7 @@ io.on('connection', (socket) => {
     // 计算 targetIndex（简化版：检查目标子棋盘是否已满或已决出）
     gs.targetIndex = isBoardResolved(gs.board[j]) ? -1 : j;
 
-    socket.to(roomCode).emit('moveMade', { move });
+    io.to(roomCode).emit('moveMade', { move });
     console.log(`Move in ${roomCode}:`, move);
   });
 
@@ -161,7 +161,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     room.gameState = initialGameState();
 
-    socket.to(roomCode).emit('gameReset');
+    io.to(roomCode).emit('gameReset');
     console.log(`Game reset in ${roomCode}`);
   });
 

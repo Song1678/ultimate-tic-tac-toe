@@ -28,7 +28,6 @@ export default function HostGame() {
 
     const handlePlay = useCallback((i) => {
         return (j) => {
-            dispatch({ type: 'PLAY', payload: { i, j } });
             socketRef.current.emit('makeMove', {
                 roomCode: roomCodeRef.current,
                 move: { i, j }
@@ -37,7 +36,6 @@ export default function HostGame() {
     }, []);
 
     function reset() {
-        dispatch({ type: 'RESET' });
         socketRef.current.emit('resetGame', { roomCode: roomCodeRef.current });
     }
 
@@ -87,9 +85,14 @@ export default function HostGame() {
             setIsGameStart(true);
         });
 
-        // 对手落子
+        // 后端落子消息
         socket.on('moveMade', ({ move }) => {
             dispatch({ type: 'PLAY', payload: move });
+        });
+
+        // 后端重置消息
+        socket.on('gameReset', () => {
+            dispatch({ type: 'RESET' });
         });
 
         return () => {
