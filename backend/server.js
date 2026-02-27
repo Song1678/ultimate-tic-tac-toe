@@ -1,12 +1,10 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-// import cors from 'cors';
 
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
-  connectionStateRecovery: {},
   cors: {
     origin: [
       'https://song1678.github.io',
@@ -94,6 +92,9 @@ io.on('connection', (socket) => {
     if (room.hostId) {
       io.to(room.hostId).emit('playerJoined');
     }
+
+    // Guest 已加入，不应再删除房间（Host 可能还在重连途中）
+    cancelRoomDeletion(roomCode);
 
     room.ready = true;
     io.to(roomCode).emit('gameStart');
