@@ -17,6 +17,9 @@ const io = new Server(server, {
 });
 
 const rooms = new Map();
+const roomTimers = new Map(); // 延迟删除定时器
+
+const ROOM_EXPIRY_MS = 3 * 60 * 1000; // 3 分钟
 
 // 生成随机房间码
 function generateRoomCode() {
@@ -28,11 +31,29 @@ function generateRoomCode() {
   return code;
 }
 
+// 延迟删除房间（给 host 重连留出时间）
+function scheduleRoomDeletion(roomCode) {
+  const timer = setTimeout(() => {
+    rooms.delete(roomCode);
+    roomTimers.delete(roomCode);
+    console.log(`Room expired: ${roomCode}`);
+  }, ROOM_EXPIRY_MS);
+  roomTimers.set(roomCode, timer);
+}
+
+// 取消延迟删除（host 已重连）
+function cancelRoomDeletion(roomCode) {
+  if (roomTimers.has(roomCode)) {
+    clearTimeout(roomTimers.get(roomCode));
+    roomTimers.delete(roomCode);
+  }
+}
+
 // 处理新连接
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
 
-  // host创建房间
+  // host 创建房间
   socket.on('createRoom', () => {
     let roomCode;
     do {
@@ -50,16 +71,16 @@ io.on('connection', (socket) => {
     console.log(`Room created: ${roomCode} by ${socket.id}`);
   });
 
-  // guest加入房间
+  // guest 加入房间
   socket.on('joinRoom', ({ roomCode }) => {
-    console.log("guest request joining room: ", roomCode);
     if (!rooms.has(roomCode)) {
       socket.emit('joinError', { message: 'Room not found' });
       return;
     }
 
     const room = rooms.get(roomCode);
-    if (room.guestId !== null) {
+    // room.ready 表示游戏已开始（含 guest 断线后未重连的情况），一律拒绝新 guest 混入
+    if (room.guestId !== null || room.ready) {
       socket.emit('joinError', { message: 'Room is full' });
       return;
     }
@@ -67,20 +88,15 @@ io.on('connection', (socket) => {
     room.guestId = socket.id;
     socket.join(roomCode);
 
-    // 发送加入成功消息
     socket.emit('roomJoined', { roomCode });
 
-    // 通知房主有玩家加入
-    io.to(room.hostId).emit('playerJoined');
+    // 若 host 当前在线才通知，host 断线期间通知无意义
+    if (room.hostId) {
+      io.to(room.hostId).emit('playerJoined');
+    }
 
-    // 标记房间为准备就绪
     room.ready = true;
-
-    // 通知所有房间内的玩家游戏开始
-    io.to(roomCode).emit('gameStart', {
-      player1: room.hostId,
-      player2: socket.id
-    });
+    io.to(roomCode).emit('gameStart');
 
     console.log(`Player ${socket.id} joined room ${roomCode}`);
   });
@@ -97,13 +113,13 @@ io.on('connection', (socket) => {
 
     if (role === 'guest') {
       room.guestId = socket.id;
-      if (room.ready) {
-        socket.emit('gameStart');
-      }
+      room.ready = true; // 恢复 ready 状态，确保 gameStart 能补发
+      socket.emit('gameStart');
     } else {
-      // host（默认）
+      // host
       room.hostId = socket.id;
-      socket.emit('roomCreated', { roomCode }); // 重新确认房间号
+      cancelRoomDeletion(roomCode); // 取消延迟删除
+      socket.emit('roomCreated', { roomCode }); // 确认房间号（同原房间号）
       if (room.ready) {
         socket.emit('gameStart');
       }
@@ -134,23 +150,22 @@ io.on('connection', (socket) => {
       if (socket.id === room.hostId) {
         room.hostId = null;
         if (room.guestId === null) {
-          // 房间已空，删除
-          rooms.delete(roomCode);
-          console.log(`Room deleted: ${roomCode}`);
+          // 无 guest：延迟删除，给 host 重连留出时间，房间号继续有效
+          scheduleRoomDeletion(roomCode);
+          console.log(`Host left room ${roomCode}, scheduled for deletion in ${ROOM_EXPIRY_MS / 1000}s`);
         } else {
-          // 通知 guest
           io.to(room.guestId).emit('playerLeft');
           console.log(`Host left room ${roomCode}`);
         }
         break;
       } else if (socket.id === room.guestId) {
         room.guestId = null;
+        // 不重置 room.ready：防止其他人混入，且支持原 guest 重连后继续游戏
         if (room.hostId === null) {
-          // 房间已空，删除
+          cancelRoomDeletion(roomCode);
           rooms.delete(roomCode);
           console.log(`Room deleted: ${roomCode}`);
         } else {
-          // 通知 host
           io.to(room.hostId).emit('playerLeft');
           console.log(`Guest left room ${roomCode}`);
         }
