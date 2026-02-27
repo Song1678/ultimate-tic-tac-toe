@@ -126,25 +126,28 @@ export default function GuestGame() {
             />
         </div>
     ) : (
-        <>
-            <label>请输入房间号：</label>
-            <span>
+        <div className={styles['setup-wrap']}>
+            <h2 className={styles['sub-title']}>房间号</h2>
+            <p>请输入房间号:</p>
+            <p>
                 <input
                     type="text"
+                    name="room-code"
                     value={roomCode}
                     onChange={(e) => setRoomCode(e.target.value)}
                     disabled={isJoining}
                     maxLength="5"
                     placeholder="xxxxx"
-                    size="12"
                 />
-                <button onClick={handleJoinRoom} disabled={isJoining}>连接</button>
-            </span>
+            </p>
+            <p>
+                <button className={styles['connect-btn']} onClick={handleJoinRoom} disabled={isJoining}>连接</button>
+            </p>
 
-            <p>不知道这是什么？问问你创建房间的朋友，他们会知道的</p>
+            <p>不知道房间号是什么？问问你创建房间的好友，他们会知道的</p>
 
             <p className={styles['error-msg']}>{errorMsg}</p>
-        </>
+        </div>
     )
 
     return (

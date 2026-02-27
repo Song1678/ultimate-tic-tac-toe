@@ -104,10 +104,13 @@ export default function HostGame() {
             />
         </div>
     ) : (
-        <>
-            <p>房间号：{roomCode ?? "加载中..."}</p>
-            {roomCode && <p>{"请将该房间号告诉你的朋友"}</p>}
-        </>
+        <div className={styles['setup-wrap']}>
+            <h2 className={styles['sub-title']}>房间号</h2>
+            <p>你的房间号是:</p>
+            <p><code className={styles['room-code']}>{roomCode ?? "Loading..."}</code></p>
+            <p>{"请将该房间号告诉你的好友,游戏将在你的好友加入该房间后自动开始"}</p>
+            <p>请<strong>不要</strong>离开或刷新该页面，否则该房间号会过期</p>
+        </div>
     )
 
     return (
