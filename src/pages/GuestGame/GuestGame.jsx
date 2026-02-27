@@ -6,7 +6,8 @@ import Board from '@/components/Board/Board.jsx';
 import BackBtn from '@/components/Buttons/BackBtn.jsx';
 
 // const serverUrl = 'http://localhost:3001';
-const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
+// const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
+const serverUrl = 'https://ultimatettt.site'
 
 export default function GuestGame() {
     const socketRef = useRef(null);
