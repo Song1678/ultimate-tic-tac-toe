@@ -15,6 +15,8 @@ export default function GuestGame() {
     const [isJoining, setIsJoining] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [isGameStart, setIsGameStart] = useState(false);
+    const [isPending, setIsPending] = useState(false);  // 发送落子请求后加锁防止网络延迟期间多次落子
+
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
@@ -32,6 +34,7 @@ export default function GuestGame() {
                 roomCode: roomCodeRef.current,
                 move: { i, j }
             });
+            setIsPending(true);
         };
     }, []);
 
@@ -73,12 +76,14 @@ export default function GuestGame() {
 
         // 游戏开始（加入房间后触发）
         socket.on('gameStart', ({ gameState: gs }) => {
+            setIsPending(false);
             dispatch({ type: 'SYNC', payload: gs });
             setIsGameStart(true);
         });
 
         // 恢复失败后的状态同步
         socket.on('gameSync', ({ gameState: gs }) => {
+            setIsPending(false);
             dispatch({ type: 'SYNC', payload: gs });
             setIsGameStart(true);
         });
@@ -98,13 +103,15 @@ export default function GuestGame() {
             setIsJoining(false);
         });
 
-        // 对手落子
+        // 落子消息
         socket.on('moveMade', ({ move }) => {
             dispatch({ type: 'PLAY', payload: move });
+            setIsPending(false);
         });
 
-        // 游戏重置
+        // 重置消息
         socket.on('gameReset', () => {
+            setIsPending(false);
             dispatch({ type: 'RESET' });
         });
 
@@ -121,7 +128,7 @@ export default function GuestGame() {
                 onPlay={handlePlay}
                 subResults={subResults}
                 isGameOver={result !== null}
-                isWaiting={nextPiece !== myPiece}
+                isWaiting={nextPiece !== myPiece || isPending}
             />
             <InfoBox
                 result={result}

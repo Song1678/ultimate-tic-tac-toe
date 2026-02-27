@@ -12,6 +12,7 @@ const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
 export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
     const [isGameStart, setIsGameStart] = useState(false);
+    const [isPending, setIsPending] = useState(false);  // 发送落子请求后加锁防止网络延迟期间多次落子
     const socketRef = useRef(null);
     const roomCodeRef = useRef(null);
 
@@ -32,6 +33,7 @@ export default function HostGame() {
                 roomCode: roomCodeRef.current,
                 move: { i, j }
             });
+            setIsPending(true);
         };
     }, []);
 
@@ -75,12 +77,14 @@ export default function HostGame() {
 
         // 游戏开始（guest 加入时触发）
         socket.on('gameStart', ({ gameState: gs }) => {
+            setIsPending(false);
             dispatch({ type: 'SYNC', payload: gs });
             setIsGameStart(true);
         });
 
         // 恢复失败后的状态同步
         socket.on('gameSync', ({ gameState: gs }) => {
+            setIsPending(false);
             dispatch({ type: 'SYNC', payload: gs });
             setIsGameStart(true);
         });
@@ -88,10 +92,12 @@ export default function HostGame() {
         // 后端落子消息
         socket.on('moveMade', ({ move }) => {
             dispatch({ type: 'PLAY', payload: move });
+            setIsPending(false);
         });
 
         // 后端重置消息
         socket.on('gameReset', () => {
+            setIsPending(false);
             dispatch({ type: 'RESET' });
         });
 
@@ -108,7 +114,7 @@ export default function HostGame() {
                 onPlay={handlePlay}
                 subResults={subResults}
                 isGameOver={result !== null}
-                isWaiting={nextPiece !== myPiece}
+                isWaiting={nextPiece !== myPiece || isPending}
             />
             <InfoBox
                 result={result}
