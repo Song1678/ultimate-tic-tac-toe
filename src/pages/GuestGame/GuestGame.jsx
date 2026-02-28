@@ -4,10 +4,13 @@ import styles from './GuestGame.module.css';
 import { checkResult } from '@/utils/boardHelper.js';
 import Board from '@/components/Board/Board.jsx';
 import BackBtn from '@/components/Buttons/BackBtn.jsx';
+import PieceFlip from '@/components/PieceFlip/PieceFlip.jsx';
 
 // const serverUrl = 'http://localhost:3001';
 const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
 // const serverUrl = 'https://ultimatettt.site'
+
+const FLIP_DURATION = 6000; // PieceFlip 动画 5s + 缓冲 1s
 
 export default function GuestGame() {
     const socketRef = useRef(null);
@@ -15,16 +18,16 @@ export default function GuestGame() {
     const [roomCode, setRoomCode] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const [isGameStart, setIsGameStart] = useState(false);
+    const [phase, setPhase] = useState('joining'); // 'joining' -> 'reveal' -> 'playing'
     const [isPending, setIsPending] = useState(false);  // 发送落子请求后加锁防止网络延迟期间多次落子
 
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
-        nextPiece: 'X',
-        myPiece: 'O'
+        nextPiece: 'X'
     });
-    const { board, targetIndex, nextPiece, myPiece } = gameState;
+    const [myPiece, setMyPiece] = useState(null);
+    const { board, targetIndex, nextPiece } = gameState;
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
@@ -50,6 +53,13 @@ export default function GuestGame() {
         socketRef.current.emit('joinRoom', { roomCode: code });
     }
 
+    function startReveal(gs, myPiece) {
+        setMyPiece(myPiece);
+        dispatch({ type: 'SYNC', payload: gs });
+        setPhase('reveal');
+        setTimeout(() => setPhase('playing'), FLIP_DURATION);
+    }
+
     useEffect(() => {
         const socket = io(serverUrl);
         socketRef.current = socket;
@@ -60,7 +70,6 @@ export default function GuestGame() {
                 console.log('Connection recovered successfully');
                 return;
             }
-
             // 恢复失败：如果之前已在游戏中，请求同步
             if (roomCodeRef.current) {
                 socket.emit('requestSync', { roomCode: roomCodeRef.current, role: 'guest' });
@@ -76,26 +85,27 @@ export default function GuestGame() {
         });
 
         // 游戏开始（加入房间后触发）
-        socket.on('gameStart', ({ gameState: gs }) => {
+        socket.on('gameStart', ({ gameState: gs, myPiece }) => {
             setIsPending(false);
-            dispatch({ type: 'SYNC', payload: gs });
-            setIsGameStart(true);
+            startReveal(gs, myPiece)
         });
 
         // 恢复失败后的状态同步
-        socket.on('gameSync', ({ gameState: gs }) => {
+        socket.on('gameSync', ({ gameState: gs, myPiece }) => {
             setIsPending(false);
+            setMyPiece(myPiece);
             dispatch({ type: 'SYNC', payload: gs });
-            setIsGameStart(true);
+            setPhase('playing');
         });
 
         // 房间过期（requestSync 时房间已不存在）
         socket.on('roomExpired', () => {
             roomCodeRef.current = null;
             setErrorMsg("房间已失效，请重新输入房间号");
-            setIsGameStart(false);
+            setPhase('joining');
+            setMyPiece(null);
             setRoomCode('');
-            dispatch({ type: 'RESET' });
+            dispatch({ type: 'SYNC', payload: initialGameState() });
         });
 
         // 加入房间错误
@@ -111,9 +121,9 @@ export default function GuestGame() {
         });
 
         // 重置消息
-        socket.on('gameReset', () => {
+        socket.on('gameReset', ({ myPiece }) => {
             setIsPending(false);
-            dispatch({ type: 'RESET' });
+            startReveal(initialGameState(), myPiece);
         });
 
         return () => {
@@ -121,45 +131,57 @@ export default function GuestGame() {
         };
     }, []);
 
-    const mainContent = isGameStart ? (
-        <div className={styles['game-wrap']}>
-            <Board
-                board={board}
-                targetIndex={targetIndex}
-                onPlay={handlePlay}
-                subResults={subResults}
-                isGameOver={result !== null}
-                isWaiting={nextPiece !== myPiece || isPending}
-            />
-            <InfoBox
-                result={result}
-                nextPiece={nextPiece}
-                targetIndex={targetIndex}
-                myPiece={myPiece}
-            />
-        </div>
-    ) : (
-        <div className={styles['setup-wrap']}>
-            <h2 className={styles['sub-title']}>房间号</h2>
-            <p>请输入房间号:</p>
-            <p>
-                <input
-                    type="text"
-                    name="room-code"
-                    value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value)}
-                    disabled={isJoining}
-                    maxLength="5"
-                    placeholder="xxxxx"
+    let mainContent;
+    if (phase === 'joining') {
+        mainContent = (
+            <div className={styles['setup-wrap']}>
+                <h2 className={styles['sub-title']}>房间号</h2>
+                <p>请输入房间号:</p>
+                <p>
+                    <input
+                        type="text"
+                        name="room-code"
+                        value={roomCode}
+                        onChange={(e) => setRoomCode(e.target.value)}
+                        disabled={isJoining}
+                        maxLength="5"
+                        placeholder="xxxxx"
+                    />
+                </p>
+                <p>
+                    <button className={styles['connect-btn']} onClick={handleJoinRoom} disabled={isJoining}>连接</button>
+                </p>
+                <p>不知道房间号是什么？问问你创建房间的好友，他们会知道的</p>
+                <p className={styles['error-msg']}>{errorMsg}</p>
+            </div>
+        );
+    } else if (phase === 'reveal') {
+        mainContent = (
+            <div className={styles['reveal-wrap']}>
+                <h2>你的棋子是</h2>
+                <PieceFlip piece={myPiece} />
+            </div>
+        );
+    } else {
+        mainContent = (
+            <div className={styles['game-wrap']}>
+                <Board
+                    board={board}
+                    targetIndex={targetIndex}
+                    onPlay={handlePlay}
+                    subResults={subResults}
+                    isGameOver={result !== null}
+                    isWaiting={nextPiece !== myPiece || isPending}
                 />
-            </p>
-            <p>
-                <button className={styles['connect-btn']} onClick={handleJoinRoom} disabled={isJoining}>连接</button>
-            </p>
-            <p>不知道房间号是什么？问问你创建房间的好友，他们会知道的</p>
-            <p className={styles['error-msg']}>{errorMsg}</p>
-        </div>
-    );
+                <InfoBox
+                    result={result}
+                    nextPiece={nextPiece}
+                    targetIndex={targetIndex}
+                    myPiece={myPiece}
+                />
+            </div>
+        );
+    }
 
     return (
         <div className={styles.container}>
@@ -191,6 +213,14 @@ function InfoBox({ result, nextPiece, targetIndex, myPiece }) {
             {!result && <p>{hintText}</p>}
         </aside>
     );
+}
+
+function initialGameState() {
+    return {
+        board: Array.from({ length: 9 }, () => Array(9).fill(null)),
+        targetIndex: -1,
+        nextPiece: 'X',
+    };
 }
 
 function gameReducer(state, action) {

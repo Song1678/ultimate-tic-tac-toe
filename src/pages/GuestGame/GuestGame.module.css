@@ -81,6 +81,13 @@
     color: red;
 }
 
+.reveal-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
 @media (max-aspect-ratio: 12 / 9) {
     .game-wrap {
         flex-direction: column-reverse;

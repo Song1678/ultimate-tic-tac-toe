@@ -5,8 +5,10 @@ import { Server } from 'socket.io';
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
+  // 连接状态恢复：断线 3 分钟内自动恢复，socket.id 不变、房间关系保留、离线消息补发
+  // 恢复失败时客户端走 requestSync 兜底
   connectionStateRecovery: {
-    maxDisconnectionDuration: 3 * 60 * 1000, // 3 分钟内可恢复
+    maxDisconnectionDuration: 3 * 60 * 1000,
   },
   cors: {
     origin: [
@@ -17,8 +19,8 @@ const io = new Server(server, {
   }
 });
 
-const rooms = new Map();
-const roomTimers = new Map();
+const rooms = new Map();        // roomCode -> room 对象
+const roomTimers = new Map();   // roomCode -> 延迟删除定时器
 
 const ROOM_EXPIRY_MS = 3 * 60 * 1000;
 
@@ -31,6 +33,7 @@ function generateRoomCode() {
   return code;
 }
 
+// 延迟删除房间，给断线方留出重连时间
 function scheduleRoomDeletion(roomCode) {
   const timer = setTimeout(() => {
     rooms.delete(roomCode);
@@ -40,6 +43,7 @@ function scheduleRoomDeletion(roomCode) {
   roomTimers.set(roomCode, timer);
 }
 
+// 取消延迟删除（有人回来了或 guest 加入了）
 function cancelRoomDeletion(roomCode) {
   if (roomTimers.has(roomCode)) {
     clearTimeout(roomTimers.get(roomCode));
@@ -47,6 +51,7 @@ function cancelRoomDeletion(roomCode) {
   }
 }
 
+// 共享的游戏状态初始值（不含 myPiece，myPiece 是每个玩家私有的）
 function initialGameState() {
   return {
     board: Array.from({ length: 9 }, () => Array(9).fill(null)),
@@ -55,14 +60,21 @@ function initialGameState() {
   };
 }
 
+// 随机分配 host 和 guest 的棋子
+function randomPieces() {
+  const hostPiece = Math.random() < 0.5 ? 'X' : 'O';
+  return { hostPiece, guestPiece: hostPiece === 'X' ? 'O' : 'X' };
+}
+
 io.on('connection', (socket) => {
   const recovered = socket.recovered;
   console.log(`Connection: ${socket.id}, recovered: ${recovered}`);
+  // 如果 recovered 为 true，说明 connectionStateRecovery 恢复成功，
+  // socket.id 不变、房间关系保留、离线消息会补发，无需做任何事。
+  // 如果 recovered 为 false，说明是全新连接或恢复失败，
+  // 由客户端主动发起 createRoom / joinRoom / requestSync。
 
-  // 如果恢复成功，socket.id 不变，房间关系保留，无需做任何事
-  // 如果恢复失败，则是全新连接，由客户端主动发起 createRoom / joinRoom
-
-  // host 创建房间
+  // ---- host 创建房间 ----
   socket.on('createRoom', () => {
     let roomCode;
     do {
@@ -72,7 +84,9 @@ io.on('connection', (socket) => {
     rooms.set(roomCode, {
       hostId: socket.id,
       guestId: null,
-      ready: false,
+      ready: false,         // guest 加入后变为 true，防止第三人混入
+      hostPiece: null,      // gameStart 时随机分配
+      guestPiece: null,
       gameState: initialGameState(),
     });
 
@@ -81,7 +95,7 @@ io.on('connection', (socket) => {
     console.log(`Room created: ${roomCode} by ${socket.id}`);
   });
 
-  // guest 加入房间
+  // ---- guest 加入房间 ----
   socket.on('joinRoom', ({ roomCode }) => {
     if (!rooms.has(roomCode)) {
       socket.emit('joinError', { message: 'Room not found' });
@@ -89,6 +103,7 @@ io.on('connection', (socket) => {
     }
 
     const room = rooms.get(roomCode);
+    // ready 为 true 说明游戏已开始过，拒绝新人加入（防止顶替断线玩家）
     if (room.guestId !== null || room.ready) {
       socket.emit('joinError', { message: 'Room is full' });
       return;
@@ -98,20 +113,37 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     socket.emit('roomJoined', { roomCode });
 
+    // 通知 host 有人加入（若 host 在线）
     if (room.hostId) {
       io.to(room.hostId).emit('playerJoined');
     }
 
+    // guest 已到，取消可能存在的房间删除定时器
     cancelRoomDeletion(roomCode);
 
+    // 随机分配棋子，初始化游戏
+    const { hostPiece, guestPiece } = randomPieces();
+    room.hostPiece = hostPiece;
+    room.guestPiece = guestPiece;
     room.ready = true;
     room.gameState = initialGameState();
-    io.to(roomCode).emit('gameStart', { gameState: room.gameState });
 
-    console.log(`Player ${socket.id} joined room ${roomCode}`);
+    // 分别通知 host 和 guest 各自的棋子（myPiece 是私有信息，不能广播）
+    io.to(room.hostId).emit('gameStart', {
+      gameState: room.gameState,
+      myPiece: hostPiece,
+    });
+    io.to(room.guestId).emit('gameStart', {
+      gameState: room.gameState,
+      myPiece: guestPiece,
+    });
+
+    console.log(`Player ${socket.id} joined room ${roomCode} (host=${hostPiece}, guest=${guestPiece})`);
   });
 
-  // 客户端恢复失败后请求同步游戏状态
+  // ---- connectionStateRecovery 恢复失败后的兜底同步 ----
+  // 客户端通过 roomCodeRef 判断自己之前是否在游戏中，
+  // 恢复失败时主动请求服务端下发当前游戏状态
   socket.on('requestSync', ({ roomCode, role }) => {
     if (!rooms.has(roomCode)) {
       socket.emit('roomExpired');
@@ -119,8 +151,9 @@ io.on('connection', (socket) => {
     }
 
     const room = rooms.get(roomCode);
-    socket.join(roomCode);
+    socket.join(roomCode); // 新 socket 需要重新加入房间
 
+    // 更新房间中的 socket.id（恢复失败意味着 id 已变）
     if (role === 'host') {
       room.hostId = socket.id;
       cancelRoomDeletion(roomCode);
@@ -129,14 +162,21 @@ io.on('connection', (socket) => {
     }
 
     if (room.ready) {
-      socket.emit('gameSync', { gameState: room.gameState });
+      // 游戏进行中：下发完整状态，客户端跳过翻牌动画直接进入游戏
+      const myPiece = role === 'host' ? room.hostPiece : room.guestPiece;
+      socket.emit('gameSync', { gameState: room.gameState, myPiece });
     } else {
-      // 游戏尚未开始，告知客户端当前房间号
+      // 游戏尚未开始（host 重连但 guest 还没来）：告知房间号继续等待
       socket.emit('roomCreated', { roomCode });
     }
   });
 
-  // 转发落子消息，同时更新服务端状态
+  // ---- 落子 ----
+  // 服务端是唯一的状态权威源：
+  // 1. 客户端 emit makeMove，不立即更新本地棋盘
+  // 2. 服务端更新 gameState，广播 moveMade 给所有人（含发送者）
+  // 3. 客户端收到 moveMade 后才 dispatch 更新棋盘
+  // 这样避免了断线时本地和服务端状态不一致的问题
   socket.on('makeMove', ({ roomCode, move }) => {
     if (!rooms.has(roomCode)) return;
 
@@ -144,28 +184,42 @@ io.on('connection', (socket) => {
     const { i, j } = move;
     const gs = room.gameState;
 
-    // 更新服务端棋盘
     gs.board[i][j] = gs.nextPiece;
     gs.nextPiece = gs.nextPiece === 'X' ? 'O' : 'X';
-    // 计算 targetIndex（简化版：检查目标子棋盘是否已满或已决出）
     gs.targetIndex = isBoardResolved(gs.board[j]) ? -1 : j;
 
+    // 广播给房间所有人（包括发送者自己，作为落子确认）
     io.to(roomCode).emit('moveMade', { move });
     console.log(`Move in ${roomCode}:`, move);
   });
 
-  // 重置游戏
+  // ---- 重置游戏 ----
+  // 重新随机分配棋子，分别通知双方
   socket.on('resetGame', ({ roomCode }) => {
     if (!rooms.has(roomCode)) return;
 
     const room = rooms.get(roomCode);
     room.gameState = initialGameState();
 
-    io.to(roomCode).emit('gameReset');
-    console.log(`Game reset in ${roomCode}`);
+    const { hostPiece, guestPiece } = randomPieces();
+    room.hostPiece = hostPiece;
+    room.guestPiece = guestPiece;
+
+    if (room.hostId) {
+      io.to(room.hostId).emit('gameReset', { myPiece: hostPiece });
+    }
+    if (room.guestId) {
+      io.to(room.guestId).emit('gameReset', { myPiece: guestPiece });
+    }
+
+    console.log(`Game reset in ${roomCode} (host=${hostPiece}, guest=${guestPiece})`);
   });
 
-  // 断开连接
+  // ---- 断开连接 ----
+  // connectionStateRecovery 会在恢复窗口内保留 socket 的房间关系和离线消息。
+  // 但 disconnect 事件仍然立即触发，这里更新房间状态并通知对方。
+  // 如果对方在恢复窗口内重连成功，一切恢复如初；
+  // 如果超时未恢复，走 requestSync 或房间被删除。
   socket.on('disconnect', () => {
     console.log('Disconnected:', socket.id);
 
@@ -173,6 +227,7 @@ io.on('connection', (socket) => {
       if (socket.id === room.hostId) {
         room.hostId = null;
         if (room.guestId === null) {
+          // 房间里没人了，延迟删除（给重连留时间）
           scheduleRoomDeletion(roomCode);
         } else {
           io.to(room.guestId).emit('playerLeft');
@@ -181,6 +236,7 @@ io.on('connection', (socket) => {
       } else if (socket.id === room.guestId) {
         room.guestId = null;
         if (room.hostId === null) {
+          // 双方都断了，直接删除
           cancelRoomDeletion(roomCode);
           rooms.delete(roomCode);
         } else {
@@ -192,14 +248,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// ---- 服务端棋盘判定工具 ----
+// ---- 棋盘判定工具 ----
 
 const LINES = [
-  [0, 1, 2], [3, 4, 5], [6, 7, 8],
-  [0, 3, 6], [1, 4, 7], [2, 5, 8],
-  [0, 4, 8], [2, 4, 6]
+  [0, 1, 2], [3, 4, 5], [6, 7, 8], // 横
+  [0, 3, 6], [1, 4, 7], [2, 5, 8], // 竖
+  [0, 4, 8], [2, 4, 6]             // 对角
 ];
 
+// 判断一个 3x3 棋盘的结果：'X' | 'O' | 'T'(平局) | null(未结束)
 function checkResult(cells) {
   for (const [a, b, c] of LINES) {
     if (cells[a] && cells[a] === cells[b] && cells[a] === cells[c]) {
@@ -210,6 +267,7 @@ function checkResult(cells) {
   return null;
 }
 
+// 子棋盘是否已有结果（用于计算 targetIndex）
 function isBoardResolved(cells) {
   return checkResult(cells) !== null;
 }

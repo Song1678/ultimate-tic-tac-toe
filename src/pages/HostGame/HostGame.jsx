@@ -5,14 +5,17 @@ import { checkResult } from '@/utils/boardHelper.js';
 import Board from '@/components/Board/Board.jsx';
 import BackBtn from '@/components/Buttons/BackBtn.jsx';
 import ResetBtn from '@/components/Buttons/ResetBtn.jsx';
+import PieceFlip from '@/components/PieceFlip/PieceFlip.jsx';
 
 // const serverUrl = 'http://localhost:3001';
 const serverUrl = 'https://ultimate-tic-tac-toe-28m2.onrender.com';
 // const serverUrl = 'https://ultimatettt.site'
 
+const FLIP_DURATION = 6000; // PieceFlip 动画 5s + 缓冲 1s
+
 export default function HostGame() {
     const [roomCode, setRoomCode] = useState(null);
-    const [isGameStart, setIsGameStart] = useState(false);
+    const [phase, setPhase] = useState('waiting');   // 'waiting' -> 'reveal' -> 'playing'
     const [isPending, setIsPending] = useState(false);  // 发送落子请求后加锁防止网络延迟期间多次落子
     const socketRef = useRef(null);
     const roomCodeRef = useRef(null);
@@ -20,26 +23,34 @@ export default function HostGame() {
     const [gameState, dispatch] = useReducer(gameReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
-        nextPiece: 'X',
-        myPiece: 'X'
+        nextPiece: 'X'
     });
-    const { board, targetIndex, nextPiece, myPiece } = gameState;
+    const [myPiece, setMyPiece] = useState(null);
+    const { board, targetIndex, nextPiece } = gameState;
     const subResults = useMemo(() =>
         Array.from({ length: 9 }, (_, i) => checkResult(board[i])), [board]);
     const result = useMemo(() => checkResult(subResults), [subResults]);
 
     const handlePlay = useCallback((i) => {
         return (j) => {
+            setIsPending(true);
             socketRef.current.emit('makeMove', {
                 roomCode: roomCodeRef.current,
                 move: { i, j }
             });
-            setIsPending(true);
         };
     }, []);
 
     function reset() {
         socketRef.current.emit('resetGame', { roomCode: roomCodeRef.current });
+    }
+
+    // 进入 reveal 阶段，动画结束后自动切到 playing
+    function startReveal(gs, myPiece) {
+        setMyPiece(myPiece);
+        dispatch({ type: 'SYNC', payload: gs });
+        setPhase('reveal');
+        setTimeout(() => setPhase('playing'), FLIP_DURATION);
     }
 
     useEffect(() => {
@@ -72,22 +83,22 @@ export default function HostGame() {
         // 房间过期（requestSync 时房间已不存在）
         socket.on('roomExpired', () => {
             roomCodeRef.current = null;
-            setIsGameStart(false);
+            setPhase('waiting');
             socket.emit('createRoom');
         });
 
         // 游戏开始（guest 加入时触发）
-        socket.on('gameStart', ({ gameState: gs }) => {
+        socket.on('gameStart', ({ gameState: gs, myPiece }) => {
             setIsPending(false);
-            dispatch({ type: 'SYNC', payload: gs });
-            setIsGameStart(true);
+            startReveal(gs, myPiece)
         });
 
         // 恢复失败后的状态同步
-        socket.on('gameSync', ({ gameState: gs }) => {
+        socket.on('gameSync', ({ gameState: gs, myPiece }) => {
             setIsPending(false);
+            setMyPiece(myPiece)
             dispatch({ type: 'SYNC', payload: gs });
-            setIsGameStart(true);
+            setPhase('playing');
         });
 
         // 后端落子消息
@@ -97,9 +108,9 @@ export default function HostGame() {
         });
 
         // 后端重置消息
-        socket.on('gameReset', () => {
+        socket.on('gameReset', ({ myPiece }) => {
             setIsPending(false);
-            dispatch({ type: 'RESET' });
+            startReveal(initialGameState(), myPiece);
         });
 
         return () => {
@@ -107,33 +118,45 @@ export default function HostGame() {
         };
     }, []);
 
-    const mainContent = isGameStart ? (
-        <div className={styles['game-wrap']}>
-            <Board
-                board={board}
-                targetIndex={targetIndex}
-                onPlay={handlePlay}
-                subResults={subResults}
-                isGameOver={result !== null}
-                isWaiting={nextPiece !== myPiece || isPending}
-            />
-            <InfoBox
-                result={result}
-                nextPiece={nextPiece}
-                targetIndex={targetIndex}
-                reset={reset}
-                myPiece={myPiece}
-            />
-        </div>
-    ) : (
-        <div className={styles['setup-wrap']}>
-            <h2 className={styles['sub-title']}>房间号</h2>
-            <p>你的房间号是:</p>
-            <p><code className={styles['room-code']}>{roomCode ?? "Loading..."}</code></p>
-            <p>请将该房间号告诉你的好友,游戏将在你的好友加入该房间后自动开始</p>
-            <p>请<strong>不要</strong>长时间离开该页面，并保持页面处于活跃状态，否则该房间号会在你离开3分钟后过期</p>
-        </div>
-    );
+    let mainContent;
+    if (phase === 'waiting') {
+        mainContent = (
+            <div className={styles['setup-wrap']}>
+                <h2 className={styles['sub-title']}>房间号</h2>
+                <p>你的房间号是:</p>
+                <p><code className={styles['room-code']}>{roomCode ?? "Loading..."}</code></p>
+                <p>请将该房间号告诉你的好友,游戏将在你的好友加入该房间后自动开始</p>
+                <p>请<strong>不要</strong>长时间离开该页面，并保持页面处于活跃状态，否则该房间号会在你离开3分钟后过期</p>
+            </div>
+        )
+    } else if (phase === 'reveal') {
+        mainContent = (
+            <div className={styles['reveal-wrap']}>
+                <h2>你的棋子是</h2>
+                <PieceFlip piece={myPiece} />
+            </div>
+        )
+    } else {
+        mainContent = (
+            <div className={styles['game-wrap']}>
+                <Board
+                    board={board}
+                    targetIndex={targetIndex}
+                    onPlay={handlePlay}
+                    subResults={subResults}
+                    isGameOver={result !== null}
+                    isWaiting={nextPiece !== myPiece || isPending}
+                />
+                <InfoBox
+                    result={result}
+                    nextPiece={nextPiece}
+                    targetIndex={targetIndex}
+                    reset={reset}
+                    myPiece={myPiece}
+                />
+            </div>
+        )
+    }
 
     return (
         <div className={styles.container}>
@@ -168,6 +191,14 @@ function InfoBox({ result, nextPiece, targetIndex, reset, myPiece }) {
     );
 }
 
+function initialGameState() {
+    return {
+        board: Array.from({ length: 9 }, () => Array(9).fill(null)),
+        targetIndex: -1,
+        nextPiece: 'X',
+    };
+}
+
 function gameReducer(state, action) {
     switch (action.type) {
         case 'PLAY': {
@@ -198,7 +229,7 @@ function gameReducer(state, action) {
                 ...state,
                 board: Array.from({ length: 9 }, () => Array(9).fill(null)),
                 targetIndex: -1,
-                nextPiece: 'X',
+                nextPiece: 'X'
             };
         }
         default:
