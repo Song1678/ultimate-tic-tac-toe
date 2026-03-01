@@ -239,6 +239,7 @@ io.on('connection', (socket) => {
           // 双方都断了，直接删除
           cancelRoomDeletion(roomCode);
           rooms.delete(roomCode);
+          console.log(`Room deleted (both left): ${roomCode}`);
         } else {
           io.to(room.hostId).emit('playerLeft');
         }
