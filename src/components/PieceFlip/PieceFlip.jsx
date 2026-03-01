@@ -6,10 +6,11 @@ export default function PieceFlip({ piece }) {
     const cardClassName = `${styles['card']} 
         ${isFlip ? (piece === 'X' ? styles['flip-x'] : styles['flip-o']) : ''}`;
     useEffect(() => {
-        const timer = setTimeout(() => {
+        // 用requestAnimationFrame解决浏览器合并一次渲染动画不显示问题
+         const rafId = requestAnimationFrame(() => { 
             setIsFlip(true);
-        }, 0);
-        return () => clearTimeout(timer);
+        });
+        return () => cancelAnimationFrame(rafId);
     }, [piece]);
 
     return (
