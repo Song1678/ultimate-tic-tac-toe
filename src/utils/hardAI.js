@@ -153,7 +153,7 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
   // ---------- 优化1：快速模拟（就地修改 + 增量检查） ----------
 
   function simulate(b, ti, startPlayer) {
-    const simBoard = cloneBoard(b); // 只拷贝一次
+    const simBoard = cloneBoard(b);
     const sr = getSubResults(simBoard);
     let player = startPlayer;
 
@@ -161,27 +161,51 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
       const moves = getLegalMoves(simBoard, ti, sr);
       if (moves.length === 0) return 0;
 
-      // 70% 启发选择，30% 随机
       let chosen;
+
+      // 轻量启发：只检查能赢/能堵，不算送子
       if (Math.random() < 0.7 && moves.length > 1) {
-        let bestS = -Infinity, bestMs = [];
+        chosen = null;
+        // 第一优先：能赢小棋盘的走法
         for (const m of moves) {
-          const s = heuristicMoveScore(simBoard, m, player, sr);
-          if (s > bestS) { bestS = s; bestMs = [m]; }
-          else if (s === bestS) bestMs.push(m);
+          simBoard[m.i][m.j] = player;
+          if (checkCellWin(simBoard[m.i], m.j) === player) {
+            simBoard[m.i][m.j] = null;
+            chosen = m;
+            break;
+          }
+          simBoard[m.i][m.j] = null;
         }
-        chosen = bestMs[Math.floor(Math.random() * bestMs.length)];
+        // 第二优先：堵对手赢小棋盘
+        if (!chosen) {
+          const opp = opponent(player);
+          for (const m of moves) {
+            simBoard[m.i][m.j] = opp;
+            if (checkCellWin(simBoard[m.i], m.j) === opp) {
+              simBoard[m.i][m.j] = null;
+              chosen = m;
+              break;
+            }
+            simBoard[m.i][m.j] = null;
+          }
+        }
+        // 第三优先：中心/角位偏好
+        if (!chosen) {
+          const center = moves.find(m => m.j === 4);
+          if (center && Math.random() < 0.5) {
+            chosen = center;
+          }
+        }
+        if (!chosen) {
+          chosen = moves[Math.floor(Math.random() * moves.length)];
+        }
       } else {
         chosen = moves[Math.floor(Math.random() * moves.length)];
       }
 
-      // 就地落子
       simBoard[chosen.i][chosen.j] = player;
-
-      // 增量更新：只检查被修改的小棋盘
       sr[chosen.i] = checkWinner(simBoard[chosen.i]);
 
-      // 用缓存的 subResults 检查全局
       const globalResult = checkWinner(sr);
       if (globalResult === AI) return 1;
       if (globalResult === HUMAN) return -1;
@@ -285,8 +309,8 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
   }
 
   const TIME_LIMIT = 5000;
-  const MIN_ITERATIONS = 10000;
-  const MAX_ITERATIONS = 50000;
+  const MIN_ITERATIONS = 8000;
+  const MAX_ITERATIONS = 150000;
   const startTime = Date.now();
   let iterations = 0;
 
@@ -315,6 +339,9 @@ export default function calculateHardAIMove(board, targetIndex, nextPiece) {
     backpropagate(node, result);
     iterations++;
   }
+
+  // console.log(`AI进行了${iterations}次模拟`);
+  // console.log(`AI进行了${Date.now() - startTime}ms的mtcs搜索`);
 
   let bestMove = null, mostVisits = -1;
   for (const child of root.children) {
