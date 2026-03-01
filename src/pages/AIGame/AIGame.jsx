@@ -8,7 +8,7 @@ import { checkResult } from '@/utils/boardHelper.js';
 import AIWorker from '@/utils/ai.worker.js?worker';
 
 export default function AIGame() {
-    const [state, dispatch] = useReducer(gameReducer, {
+    const [state, dispatch] = useReducer(appReducer, {
         board: Array.from({ length: 9 }, () => Array(9).fill(null)),
         targetIndex: -1,
         nextPiece: 'X',
@@ -160,7 +160,7 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, isAuto
     );
 }
 
-function gameReducer(state, action) {
+function appReducer(state, action) {
     switch (action.type) {
         case 'HUMAN_PLAY': {
             const { i, j } = action.payload;

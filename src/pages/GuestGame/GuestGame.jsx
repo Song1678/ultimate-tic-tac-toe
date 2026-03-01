@@ -248,14 +248,6 @@ function gameReducer(state, action) {
                 nextPiece
             };
         }
-        case 'RESET': {
-            return {
-                ...state,
-                board: Array.from({ length: 9 }, () => Array(9).fill(null)),
-                targetIndex: -1,
-                nextPiece: 'X'
-            };
-        }
         default:
             return state;
     }
