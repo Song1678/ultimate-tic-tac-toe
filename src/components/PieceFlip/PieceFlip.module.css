@@ -1,13 +1,12 @@
 .card-wrap {
     margin: 30px;
-    perspective: 1200px;
+    perspective: 900px;
 }
 
 .card {
     position: relative;
-    box-sizing: content-box;
-    width: 150px;
-    height: 150px;
+    width: 180px;
+    height: 180px;
     transform-style: preserve-3d;
     transition: transform 5s ease-out;
 }
@@ -17,7 +16,7 @@
 }
 
 .card.flip-o {
-    transform: rotateY(3420deg);
+    transform: rotateY(3780deg);
 }
 
 .card-front,
@@ -31,7 +30,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 100px;
+    font-size: 120px;
     line-height: 100%;
 }
 

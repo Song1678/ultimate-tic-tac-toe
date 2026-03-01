@@ -82,10 +82,10 @@
 }
 
 .reveal-wrap {
+    margin-bottom: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1rem;
 }
 
 @media (max-aspect-ratio: 12 / 9) {

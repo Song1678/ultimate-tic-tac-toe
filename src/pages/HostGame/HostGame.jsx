@@ -126,7 +126,7 @@ export default function HostGame() {
                 <p>你的房间号是:</p>
                 <p><code className={styles['room-code']}>{roomCode ?? "Loading..."}</code></p>
                 <p>请将该房间号告诉你的好友,游戏将在你的好友加入该房间后自动开始</p>
-                <p>请<strong>不要</strong>长时间离开该页面，并保持页面处于活跃状态，否则该房间号会在你离开3分钟后过期</p>
+                <p>请<strong>不要</strong>长时间离开该页面，并保持页面处于活跃状态，否则该房间号会在你<strong>离开3分钟后过期</strong></p>
             </div>
         )
     } else if (phase === 'reveal') {
