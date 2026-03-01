@@ -34,11 +34,25 @@ function generateRoomCode() {
 }
 
 // 延迟删除房间，给断线方留出重连时间
+// 删除前会检查是否有人已重连，防止误删
 function scheduleRoomDeletion(roomCode) {
+  cancelRoomDeletion(roomCode); // 先取消已有定时器，避免重复
+
   const timer = setTimeout(() => {
-    rooms.delete(roomCode);
     roomTimers.delete(roomCode);
-    console.log(`Room expired: ${roomCode}`);
+    if (!rooms.has(roomCode)) return;
+
+    // 安全检查：删除前确认确实没人在线
+    const room = rooms.get(roomCode);
+    const hostOnline = room.hostId && io.sockets.sockets.get(room.hostId)?.connected;
+    const guestOnline = room.guestId && io.sockets.sockets.get(room.guestId)?.connected;
+
+    if (!hostOnline && !guestOnline) {
+      rooms.delete(roomCode);
+      console.log(`Room expired: ${roomCode}`);
+    } else {
+      console.log(`Room ${roomCode} still has connected players, skipping deletion`);
+    }
   }, ROOM_EXPIRY_MS);
   roomTimers.set(roomCode, timer);
 }
@@ -73,6 +87,17 @@ io.on('connection', (socket) => {
   // socket.id 不变、房间关系保留、离线消息会补发，无需做任何事。
   // 如果 recovered 为 false，说明是全新连接或恢复失败，
   // 由客户端主动发起 createRoom / joinRoom / requestSync。
+
+  // 恢复成功时，取消该房间的延迟删除定时器
+  if (recovered) {
+    for (const [roomCode, room] of rooms.entries()) {
+      if (socket.id === room.hostId || socket.id === room.guestId) {
+        cancelRoomDeletion(roomCode);
+        console.log(`Recovery cancelled deletion for room ${roomCode}`);
+        break;
+      }
+    }
+  }
 
   // ---- host 创建房间 ----
   socket.on('createRoom', () => {
@@ -129,6 +154,7 @@ io.on('connection', (socket) => {
     room.gameState = initialGameState();
 
     // 分别通知 host 和 guest 各自的棋子（myPiece 是私有信息，不能广播）
+    // 即使 host 当前断线，消息会被 connectionStateRecovery 缓存，恢复后补发
     io.to(room.hostId).emit('gameStart', {
       gameState: room.gameState,
       myPiece: hostPiece,
@@ -159,6 +185,7 @@ io.on('connection', (socket) => {
       cancelRoomDeletion(roomCode);
     } else {
       room.guestId = socket.id;
+      cancelRoomDeletion(roomCode);
     }
 
     if (room.ready) {
@@ -216,32 +243,41 @@ io.on('connection', (socket) => {
   });
 
   // ---- 断开连接 ----
-  // connectionStateRecovery 会在恢复窗口内保留 socket 的房间关系和离线消息。
-  // 但 disconnect 事件仍然立即触发，这里更新房间状态并通知对方。
-  // 如果对方在恢复窗口内重连成功，一切恢复如初；
-  // 如果超时未恢复，走 requestSync 或房间被删除。
+  // 关键：不清除 hostId / guestId，保留给 connectionStateRecovery 使用。
+  // - 恢复成功时：socket.id 不变，hostId/guestId 仍然有效，
+  //   离线期间发给该 id 的消息（如 gameStart）会被 recovery 机制补发。
+  // - 恢复失败时：客户端走 requestSync，用新 socket.id 更新 hostId/guestId。
+  // - 超时未恢复：scheduleRoomDeletion 定时器到期后清理房间。
   socket.on('disconnect', () => {
     console.log('Disconnected:', socket.id);
 
     for (const [roomCode, room] of rooms.entries()) {
       if (socket.id === room.hostId) {
-        room.hostId = null;
-        if (room.guestId === null) {
-          // 房间里没人了，延迟删除（给重连留时间）
+        // 检查 guest 是否在线
+        const guestOnline = room.guestId
+          && io.sockets.sockets.get(room.guestId)?.connected;
+
+        if (!guestOnline) {
+          // guest 不在线（或不存在），延迟删除房间
           scheduleRoomDeletion(roomCode);
+          console.log(`Host left room ${roomCode}, scheduled for deletion`);
         } else {
           io.to(room.guestId).emit('playerLeft');
+          console.log(`Host left room ${roomCode}`);
         }
         break;
       } else if (socket.id === room.guestId) {
-        room.guestId = null;
-        if (room.hostId === null) {
-          // 双方都断了，直接删除
-          cancelRoomDeletion(roomCode);
-          rooms.delete(roomCode);
-          console.log(`Room deleted (both left): ${roomCode}`);
+        // 检查 host 是否在线
+        const hostOnline = room.hostId
+          && io.sockets.sockets.get(room.hostId)?.connected;
+
+        if (!hostOnline) {
+          // 双方都离线，延迟删除房间
+          scheduleRoomDeletion(roomCode);
+          console.log(`Guest left room ${roomCode}, scheduled for deletion`);
         } else {
           io.to(room.hostId).emit('playerLeft');
+          console.log(`Guest left room ${roomCode}`);
         }
         break;
       }
