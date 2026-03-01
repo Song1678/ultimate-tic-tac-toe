@@ -1,4 +1,4 @@
-export default function calculateHardAIMove(board, targetIndex, nextPiece) {
+export default function calculateTestAIMove(board, targetIndex, nextPiece) {
   const AI = nextPiece;
   const HUMAN = nextPiece === 'O' ? 'X' : 'O';
 
