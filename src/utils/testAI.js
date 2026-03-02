@@ -189,10 +189,13 @@ export default function calculateTestAIMove(board, targetIndex, nextPiece) {
   if (root.allChildren.length === 0) return null;
   if (root.allChildren.length === 1) return root.allChildren[0];
 
+  const startTime = Date.now();
   const endTime = Date.now() + 5000;
   while (Date.now() < endTime) {
     root.runMCTS();
   }
+
+  console.log(`${AI} iterations: ${root.sim}, time: ${Date.now() - startTime}ms`);
 
   const best = root.bestChild;
   return best ? best.move : root.allChildren[0];
