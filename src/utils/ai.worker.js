@@ -3,7 +3,7 @@ import calculateMediumAIMove from "./mediumAI.js";
 import calculateHardAIMove from "./hardAI.js";
 import calculateTestAIMove from "./testAI.js"
 
-const AI_DELAY_CONFIG = { easy: 500, medium: 1000, hard: 300, test: 50 };
+const AI_DELAY_CONFIG = { easy: 500, medium: 1000, hard: 300, test: 100 };
 
 function calculateAIMove(board, targetIndex, nextPiece, difficulty) {
     switch (difficulty) {
@@ -23,10 +23,7 @@ function calculateAIMove(board, targetIndex, nextPiece, difficulty) {
 self.onmessage = (e) => {
     const { flatBoard, targetIndex, nextPiece, difficulty } = e.data;
     //在worker线程里复原二维数组
-    const board = [];
-    for (let i = 0; i < 9; i++) {
-        board.push(flatBoard.slice(i * 9, (i + 1) * 9));
-    }
+    const board = Array.from({length: 9}, (_, i) => flatBoard.slice(i * 9, (i + 1) * 9));
     console.log("worker收到任务并准备开始计算");
     const aiMove = calculateAIMove(board, targetIndex, nextPiece, difficulty );
 
