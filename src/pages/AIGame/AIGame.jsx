@@ -136,7 +136,7 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, isAuto
     return (
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
-            {!result && <p>{hintText}</p>}
+            {!result ? <p>{hintText}</p> : <ResetBtn callback={onReset} />}
             <label className={styles['auto-x-label']}>
                 内测AI托管X：
                 <input
@@ -155,7 +155,6 @@ function InfoBox({ result, nextPiece, targetIndex, onReset, isAIThinking, isAuto
                     onChange={onToggleO}
                 />
             </label>
-            {result && <ResetBtn callback={onReset} />}
         </aside>
     );
 }

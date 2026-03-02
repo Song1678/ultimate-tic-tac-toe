@@ -72,8 +72,7 @@ function InfoBox({ result, nextPiece, targetIndex, reset }) {
     return (
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
-            {!result && <p>{hintText}</p>}
-            {result && <ResetBtn callback={reset} />}
+            {!result ? <p>{hintText}</p> : <ResetBtn callback={reset} />}
         </aside>
     );
 }

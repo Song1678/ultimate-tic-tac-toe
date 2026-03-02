@@ -210,7 +210,7 @@ function InfoBox({ result, nextPiece, targetIndex, myPiece }) {
     return (
         <aside className={styles['info-box']}>
             <h2>{titleContent}</h2>
-            {!result && <p>{hintText}</p>}
+            {!result ? <p>{hintText}</p> : <p>请耐心等待房主重置游戏</p>}
         </aside>
     );
 }
