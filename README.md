@@ -160,6 +160,15 @@ https://ultimate-tic-tac-toe-28m2.onrender.com
 
 ---
 
+## 参考来源
+
+本项目的网页设计参考了 Michael Xing 的终极井字棋游戏：
+
+- [Ultimate Tic Tac Toe by Michael Xing](https://michaelxing.com/UltimateTTT/v3/)
+- 项目仅参考了设计思路和用户界面，代码实现完全独立开发
+
+---
+
 ## 许可证
 
 [MIT](https://opensource.org/licenses/MIT)
